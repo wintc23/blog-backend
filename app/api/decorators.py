@@ -9,3 +9,16 @@ def login_required(func):
       return unauthorized('未登录，请先认证后再操作')
     return func(*args, **kwargs)
   return decorator
+
+def permission_required(permission):
+  def decorator(func):
+    @wraps(func)
+    def decorated_function(*args, **kwargs):
+      if not g.current_user:
+        return unauthorized('未登录')
+      if not g.current_user.can(permission):
+        return forbidden('操作被禁止')
+      return func(*args, **kwargs)
+    return decorated_function
+  return decorator
+    

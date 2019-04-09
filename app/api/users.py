@@ -36,6 +36,7 @@ def github_login(code):
   req2 = urllib.request.Request(url='https://api.github.com/user?access_token='+access_token, headers=headers)
   html2 = urllib.request.urlopen(req2).read().decode('utf-8')
   info = json.loads(html2)
+  print(info, '~~~~~~~~~~~~~~')
   id_string = 'github' + str(info['id'])
   user = User.query.filter_by(id_string=id_string).first()
   if not user:

@@ -1,8 +1,9 @@
 from flask import request, current_app, jsonify, g
 from .. import db
 from . import api
-from ..models import PostType, Post
+from ..models import PostType, Post, Permission
 from .errors import *
+from .decorators import *
 
 @api.route('/get-post-type/')
 def get_post_types():
@@ -22,7 +23,7 @@ def get_posts():
     return response
   page = request.json.get('page', 1)
   per_page = request.json.get('per_page', 5)
-  pagination = post_type.posts.order_by(Post.timestamp.desc()).paginate(
+  pagination = post_type.posts.filter_by(hide = False).order_by(Post.timestamp.desc()).paginate(
     page,
     per_page = per_page,
     error_out = False
@@ -44,7 +45,7 @@ def get_post(post_id):
     return not_found('查询不到该文章', True)
   json = post.to_json()
   post_type = post.type
-  post_list = post_type.posts.all()
+  post_list = post_type.posts.filter_by(hide = False).all()
   index = post_list.index(post)
   before = None
   after = None
@@ -58,3 +59,10 @@ def get_post(post_id):
   json['after'] = after
   json['comments'] = list(map(lambda comment: comment.to_json(), comments))
   return jsonify(json)
+
+@api.route('/add-post/')
+@permission_required(Permission.WRITE)
+def add_post():
+  post = Post(author = g.current_user, hide = True, type_id = post_type_id)
+  db.session.add(post)
+  return jsonify({ message: '创建文章成功' })

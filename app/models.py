@@ -66,6 +66,7 @@ class User(db.Model):
   __tablename__ = 'users'
   id = db.Column(db.Integer, primary_key = True)
   id_string = db.Column(db.String(32), unique = True, index = True)
+  email = db.Column(db.String(64), unique = True, index = True)
   username = db.Column(db.String(64), index = True)
   avatar = db.Column(db.Text(), default="default_avatar.jpg")
   role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
@@ -115,12 +116,19 @@ class User(db.Model):
     print(data)
     return User.query.get(data['id'])
   
+  def can(self, permission):
+    return self.role is not None and self.role.has_permission(permission)
+  
+  def is_administrator(self):
+    return self.can(Permission.ADMIN)
+
   def to_json(self):
     return {
       'id': self.id,
       'username': self.username,
       'avatar': self.avatar,
       'about_me': self.about_me,
+      'admin': self.is_administrator(),
     }
 
   def get_detail(self):
@@ -129,15 +137,17 @@ class User(db.Model):
       'username': self.username,
       'avatar': self.avatar,
       'about_me': self.about_me,
+      'admin': self.is_administrator(),
     }
+  
 
 class PostType(db.Model):
   __tablename__ = 'post_type'
   id = db.Column(db.Integer, primary_key = True)
   name = db.Column(db.String(64))
   alias = db.Column(db.String(32))
-  posts = db.relationship('Post', backref='type', lazy='dynamic')
   default = db.Column(db.Boolean, default = False, index = True)
+  posts = db.relationship('Post', backref='type', lazy='dynamic')
 
   def to_json(self):
     return {
@@ -349,7 +359,7 @@ class Message(db.Model):
             params['root_response_id'] = message.root_response_id
           else:
             params['root_response_id'] = message.id
-          params['body'] = forgery_py.lorem_ipsum.sentence(10, 20)
+          params['body'] = forgery_py.lorem_ipsum.sentences(randint(10, 20))
       msg = Message(**params)
       db.session.add(msg)
       try:
