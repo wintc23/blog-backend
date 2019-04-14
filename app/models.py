@@ -68,7 +68,7 @@ class User(db.Model):
   id_string = db.Column(db.String(32), unique = True, index = True)
   email = db.Column(db.String(64), unique = True, index = True)
   username = db.Column(db.String(64), index = True)
-  avatar = db.Column(db.Text(), default="default_avatar.jpg")
+  avatar = db.Column(db.String(64), default="default")
   role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
   member_since = db.Column(db.DateTime(), default = datetime.utcnow)
   last_seen = db.Column(db.DateTime(), default = datetime.utcnow)
@@ -229,7 +229,7 @@ class Post(db.Model):
       'timestamp': time.mktime(self.timestamp.timetuple()),
       'read_times': self.read_times,
       'likes': self.likes.count(),
-      'type': self.type_id,
+      'type_id': self.type_id,
       'abstract_image': self.abstract_image
     }
     return json_post

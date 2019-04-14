@@ -1,9 +1,11 @@
+
 from flask import request, current_app, jsonify, g
 from .. import db
 from . import api
 from ..models import PostType, Post, Permission
 from .errors import *
 from .decorators import *
+
 
 @api.route('/get-post-type/')
 def get_post_types():
@@ -45,7 +47,13 @@ def get_post(post_id):
     return not_found('查询不到该文章', True)
   json = post.to_json()
   post_type = post.type
-  post_list = post_type.posts.filter_by(hide = False).all()
+  condition = {}
+  if g.current_user and g.current_user.can(Permission.ADMIN):
+    post_list = post_type.posts.filter().all()
+  else:
+    post_list = post_type.posts.filter(hide = False).all()
+    if not post in post_list:
+      return not_found('查询不到该文章', True)
   index = post_list.index(post)
   before = None
   after = None
@@ -60,9 +68,40 @@ def get_post(post_id):
   json['comments'] = list(map(lambda comment: comment.to_json(), comments))
   return jsonify(json)
 
-@api.route('/add-post/')
+@api.route('/add-post/<post_type_id>')
 @permission_required(Permission.WRITE)
-def add_post():
+def add_post(post_type_id):
   post = Post(author = g.current_user, hide = True, type_id = post_type_id)
   db.session.add(post)
-  return jsonify({ message: '创建文章成功' })
+  db.session.commit()
+  print(post.id)
+  return jsonify({ 'message': '创建文章成功', 'post_id': post.id, 'notify': True })
+
+@api.route('/save-post/', methods = ['POST'])
+@permission_required(Permission.WRITE)
+def save_post():
+  post_id = request.json.get('id')
+  if not post_id:
+    return not_found('查找不到文章', True)
+  post = Post.query.get(post_id)
+  if not post:
+    return not_found('查找不到文章', True)
+  for key in request.json:
+    setattr(post, key, request.json[key])
+  db.session.add(post)
+  return jsonify({
+    'message': '保存成功',
+    'notify': True
+  })
+
+@api.route('/delete-post/<post_id>')
+@permission_required(Permission.ADMIN)
+def delete_post(post_id):
+  post = Post.query.get(post_id)
+  if not post:
+    return not_found('查找不到文章', True)
+  db.session.delete(post)
+  return jsonify({
+    'message': '删除成功',
+    'notify': True
+  })

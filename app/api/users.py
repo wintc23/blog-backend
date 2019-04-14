@@ -44,12 +44,13 @@ def github_login(code):
     if avatar_url:
       filename = str(uuid.uuid1())
       dirname, _ = os.path.split(os.path.abspath(sys.argv[0]))
-      upload_path = dirname + '/../files/avatar/' + filename
+      fold_path = dirname + '/../files/avatar/'
+      if not os.path.exists(fold_path):
+        os.makedirs(fold_path)
+      upload_path = fold_path + filename
       urllib.request.urlretrieve(avatar_url, upload_path)
       res = urllib.request.urlretrieve(avatar_url, upload_path)
       avatar = filename
-    else:
-      avatar = '`default_avatar.jpg`'
     register_info = {
       'username': info['login'],
       'id_string': id_string,

@@ -1,8 +1,11 @@
 import os
 import sys
 import uuid
+
 from . import api
 from flask import g, jsonify, request, send_from_directory
+from .decorators import permission_required
+from ..models import Permission
 
 @api.route('/get-file/')
 def get_file():
@@ -10,6 +13,19 @@ def get_file():
   dirpath = dirname + '/../files/'
   filename = request.args.get('filename')
   path = request.args.get('path')
-  if path:
+  if filename != 'default' and path:
     dirpath += path + '/'
   return send_from_directory(dirpath, filename)
+
+@api.route('/save-image/', methods = ['PUT'])
+@permission_required(Permission.ADMIN)
+def save_post_image():
+  print(request.files)
+  f = request.files['image']
+  filename = str(uuid.uuid1()).replace('-', '')
+  dirname, _ = os.path.split(os.path.abspath(sys.argv[0]))
+  upload_path = dirname + '/../files/post/'
+  if not os.path.exists(upload_path):
+    os.makedirs(upload_path)
+  f.save(upload_path + filename)
+  return jsonify({ 'message': '上传成功', 'filename': filename, 'path': 'post' })
