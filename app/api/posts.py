@@ -25,7 +25,11 @@ def get_posts():
     return response
   page = request.json.get('page', 1)
   per_page = request.json.get('per_page', 5)
-  pagination = post_type.posts.filter_by(hide = False).order_by(Post.timestamp.desc()).paginate(
+  if g.current_user and g.current_user.can(Permission.ADMIN):
+    query = post_type.posts
+  else:
+    query = post_type.posts.filter_by(hide = False)
+  pagination = query.order_by(Post.timestamp.desc()).paginate(
     page,
     per_page = per_page,
     error_out = False
