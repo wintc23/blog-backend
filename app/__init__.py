@@ -3,7 +3,6 @@ from flask_mail import Mail
 from flask_sqlalchemy import SQLAlchemy
 from config import config
 
-
 mail = Mail()
 db = SQLAlchemy()
 
