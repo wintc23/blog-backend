@@ -8,15 +8,14 @@ from .. import db
 
 @api.before_request
 def before_request():
-  if (request.method == 'OPTIONS'):
+  if request.method == 'OPTIONS':
     return jsonify({ 'success': True })
   authString = request.headers.get('Authorization', '')
-  if (authString):
+  g.current_user = None
+  if authString:
     current_user = User.verify_auth_token(authString)
     if current_user:
       g.current_user = current_user
-    else:
-      g.current_user = None
 
 @api.after_request
 def after_request(response):
