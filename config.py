@@ -14,7 +14,8 @@ class Config:
   FLASK_ADMIN = os.environ.get('FLASK_ADMIN')
   FLASK_GITHUB_SECRET = os.environ.get('FLASK_GITHUB_SECRET')
   FLASK_GITHUB_CLIENT_ID = os.environ.get('FLASK_GITHUB_CLIENT_ID')
-
+  QI_NIU_ACCESS_KEY = os.environ.get('QI_NIU_ACCESS_KEY')
+  QI_NIU_SECRET_KEY = os.environ.get('QI_NIU_SECRET_KEY')
   @staticmethod
   def init_app(app):
     pass
