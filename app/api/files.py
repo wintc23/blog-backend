@@ -28,9 +28,12 @@ def get_qiniu_token(filename):
   }
   access_key = current_app.config['QI_NIU_ACCESS_KEY']
   secret_key = current_app.config['QI_NIU_SECRET_KEY']
+  bucket = current_app.config['QI_NIU_BUCKET']
+  domain = current_app.config['QI_NIU_LINK_URL']
+
   q = Auth(access_key, secret_key)
-  token = q.upload_token('blog_img', filename, 600, policy)
-  return jsonify({ 'token': token })
+  token = q.upload_token(bucket, filename, 600, policy)
+  return jsonify({ 'token': token, 'domain': domain })
 
 @api.route('/save-image/', methods = ['PUT'])
 @permission_required(Permission.ADMIN)
