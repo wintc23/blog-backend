@@ -17,8 +17,7 @@ def permission_required(permission):
       if not g.current_user:
         return unauthorized('未登录')
       if not g.current_user.can(permission):
-        return forbidden('操作被禁止')
+        return forbidden('YU89IJO0')
       return func(*args, **kwargs)
     return decorated_function
   return decorator
-    

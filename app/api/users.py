@@ -9,7 +9,7 @@ from flask import g, jsonify, request, current_app
 from . import api
 from .errors import *
 from .. import db
-from ..models import User
+from ..models import User, Permission
 from .decorators import login_required
 
 @api.route('/github-login/<code>')
@@ -84,3 +84,7 @@ def get_self_info():
   if not g.current_user:
     return bad_request('未找到用户信息')
   return jsonify(g.current_user.get_detail())
+
+@api.route('/check-admin/')
+def checkAdmin():
+  return jsonify({ 'admin': bool(g.current_user and g.current_user.can(Permission.ADMIN))})

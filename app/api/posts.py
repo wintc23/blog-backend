@@ -2,14 +2,17 @@
 from flask import request, current_app, jsonify, g
 from .. import db
 from . import api
-from ..models import PostType, Post, Permission
+from ..models import PostType, Post, Permission, Like, Comment
 from .errors import *
 from .decorators import *
-
+from sqlalchemy import or_
 
 @api.route('/get-post-type/')
 def get_post_types():
-  type_list = PostType.query.all()
+  if g.current_user and g.current_user.can(Permission.ADMIN):
+    type_list = PostType.query.filter_by().all()
+  else:
+    type_list = PostType.query.filter_by(special = 0).all()
   return jsonify({ 'list': list(map(lambda t: t.to_json(), type_list)) })
 
 @api.route('/get-posts/', methods=["POST"])
@@ -52,11 +55,15 @@ def get_post(post_id):
   post_type = post.type
   condition = {}
   if g.current_user and g.current_user.can(Permission.ADMIN):
-    post_list = post_type.posts.filter().all()
+    post_list = post_type.posts.all()
   else:
-    post_list = post_type.posts.filter(hide = False).all()
+    post_list = post_type.posts.filter_by(hide = False).all()
     if not post in post_list:
       return not_found('查询不到该文章', True)
+  json['like'] = False
+  if g.current_user:
+    if post.likes.filter_by(author = g.current_user).first():
+      json['like'] = True
   index = post_list.index(post)
   before = None
   after = None
@@ -65,7 +72,11 @@ def get_post(post_id):
     after = post_list[index + 1].abstract_json()
   if index > 0:
     before = post_list[index - 1].abstract_json()
-  comments = post.comments.all()
+  if g.current_user and g.current_user.can(Permission.ADMIN):
+    comments = post.comments.all()
+  else:
+    hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
+    comments = post.comments.filter(hideCondition).all()
   json['before'] = before
   json['after'] = after
   json['comments'] = list(map(lambda comment: comment.to_json(), comments))
@@ -108,3 +119,41 @@ def delete_post(post_id):
     'message': '删除成功',
     'notify': True
   })
+
+@api.route('/get-about-me/')
+def get_about_me():
+  post_type = PostType.query.filter_by(special = 1).first()
+  post = post_type.posts.first()
+  if not g.current_user or not g.current_user.can(Permission.ADMIN):
+    if post.hide:
+      return not_found('获取数据失败', True)
+  return jsonify(post.to_json())
+
+@api.route('/like-post/<post_id>')
+@login_required
+def like_post(post_id):
+  if not post_id:
+    return not_found('未找到文章')
+  post = Post.query.get(post_id)
+  if not post:
+    return not_found('找不到文章')
+  like = post.likes.filter_by(author = g.current_user).first()
+  if like:
+    return bad_request('您赞过该文章了')
+  like = Like(post_id = post_id, author = g.current_user)
+  db.session.add(like)
+  return jsonify({'message': '您点赞了该文章', 'notify': True})
+
+@api.route('/cancel-like-post/<post_id>')
+@login_required
+def cancel_like_post(post_id):
+  if not post_id:
+    return not_found('未找到文章')
+  post = Post.query.get(post_id)
+  if not post:
+    return not_found('找不到文章')
+  like = post.likes.filter_by(author = g.current_user).first()
+  if not like:
+    return not_found('未曾点赞')
+  db.session.delete(like)
+  return jsonify({ 'message': '您取消了点赞', 'notify': True })

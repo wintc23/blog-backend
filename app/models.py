@@ -78,7 +78,7 @@ class User(db.Model):
   comments = db.relationship('Comment', backref = 'author', lazy = 'dynamic')
   likes = db.relationship('Like', backref = 'author', lazy = 'dynamic')
   messages = db.relationship('Message', backref = 'author', lazy = 'dynamic')
-
+ 
   def __init__(self, **kwargs):
     super(User, self).__init__(**kwargs)
     if not self.role:
@@ -145,8 +145,10 @@ class PostType(db.Model):
   __tablename__ = 'post_type'
   id = db.Column(db.Integer, primary_key = True)
   name = db.Column(db.String(64))
-  alias = db.Column(db.String(32))
+  alias = db.Column(db.String(32), index = True)
   default = db.Column(db.Boolean, default = False, index = True)
+  special = db.Column(db.SmallInteger, default = 0)
+  sort = db.Column(db.Integer)
   posts = db.relationship('Post', backref='type', lazy='dynamic')
 
   def to_json(self):
@@ -154,24 +156,48 @@ class PostType(db.Model):
       'id': self.id,
       'name': self.name,
       'alias': self.alias,
-      'default': self.default
+      'default': self.default,
+      'special': self.special,
+      'sort': self.sort
     }
 
   @staticmethod
   def insert_types():
     types = {
-      'blog': '技术博客',
-      'note': '读书笔记',
-      'essay': '随笔'
+      'blog': {
+        'name': '技术博客',
+        'sort': 1,
+        'special': 0,
+        'default': True
+      },
+      'note': {
+        'name': '读书笔记',
+        'sort': 2,
+        'special': 0,
+        'default': False
+      },
+      'essay': {
+        'name': '随笔',
+        'sort': 3,
+        'special': 0,
+        'default': False
+      },
+      'about_me': {
+        'name': '关于',
+        'sort': 4,
+        'special': 1,
+        'default': False
+      }
     }
-    default_blog = 'blog'
     for alias in types:
+      data = types[alias]
       post_type = PostType.query.filter_by(alias = alias).first()
       if not post_type:
-        post_type = PostType(alias = alias, name = types[alias])
-      else:
-        post_type.name = types[alias]
-      post_type.default = (default_blog == alias)
+        post_type = PostType(alias = alias)
+      post_type.name = data['name']
+      post_type.sort = data['sort']
+      post_type.special = data['special']
+      post_type.default = data['default']
       db.session.add(post_type)
     db.session.commit()
 
@@ -256,9 +282,10 @@ class Comment(db.Model):
   body = db.Column(db.Text)
   post_id = db.Column(db.Integer, db.ForeignKey('posts.id'))
   author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-  comments = db.relationship('Comment', backref = db.backref('response', remote_side=[id]))
+  comments = db.relationship('Comment', backref = db.backref('response', remote_side=[id]), lazy = 'dynamic')
   response_id = db.Column(db.Integer, db.ForeignKey('comments.id'))
   timestamp = db.Column(db.DateTime, index = True, default = datetime.utcnow)
+  hide = db.Column(db.Boolean, default = True)
 
   def to_json(self):
     return {
@@ -268,6 +295,7 @@ class Comment(db.Model):
       'post_id': self.post_id,
       'response_id': self.response_id,
       'timestamp': time.mktime(self.timestamp.timetuple()),
+      'hide': self.hide
     }
 
   @staticmethod
@@ -324,9 +352,10 @@ class Message(db.Model):
   id = db.Column(db.Integer, primary_key = True)
   body = db.Column(db.Text)
   author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-  comments = db.relationship('Message', backref=db.backref('root_response', remote_side=[id]))
+  comments = db.relationship('Message', backref=db.backref('root_response', remote_side=[id]), lazy = 'dynamic')
   response_id = db.Column(db.Integer)
   root_response_id = db.Column(db.Integer, db.ForeignKey('messages.id'))
+  hide = db.Column(db.Boolean, default = True)
   timestamp = db.Column(db.DateTime, index = True, default = datetime.utcnow)
 
   def to_json(self):
@@ -337,6 +366,7 @@ class Message(db.Model):
       'timestamp': time.mktime(self.timestamp.timetuple()),
       'response_id': self.response_id,
       'root_response_id': self.root_response_id,
+      'hide': self.hide
     }
 
   @staticmethod
