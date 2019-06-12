@@ -57,6 +57,8 @@ def get_post(post_id):
   if g.current_user and g.current_user.can(Permission.ADMIN):
     post_list = post_type.posts.all()
   else:
+    if post.is_about_me():
+      return not_found('查询不到该文章', True)
     post_list = post_type.posts.filter_by(hide = False).all()
     if not post in post_list:
       return not_found('查询不到该文章', True)
