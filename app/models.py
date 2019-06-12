@@ -242,8 +242,10 @@ class Post(db.Model):
         print('auto create post %s done' % (i + 1))
       except:
         db.session.rollback()
-  def is_about_me():
-    return self.type.alias == 'aboute_me'
+  
+  def is_about_me(self):
+    print 
+    return self.type.alias == 'about_me'
 
   def to_json(self):
     json_post = {
