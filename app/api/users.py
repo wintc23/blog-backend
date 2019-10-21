@@ -30,6 +30,7 @@ def github_login(code):
   req = urllib.request.Request(url, params, headers)
   html = urllib.request.urlopen(req).read().decode('utf-8')
   access_data = json.loads(html)
+  print(access_data)
   if access_data.get('error', ''):
     return bad_request('链接已失效，请重新登录', True)
   access_token = access_data['access_token']

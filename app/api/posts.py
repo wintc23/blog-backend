@@ -16,6 +16,24 @@ def get_post_types():
   return jsonify({ 'list': list(map(lambda t: t.to_json(), type_list)) })
 
 @api.route('/get-posts/', methods=["POST"])
+def get_post_list():
+  page = request.json.get('page', 1)
+  per_page = current_app.config['FLASK_POSTS_PER_PAGE']
+  hide_post_type = PostType.query.filter_by(special = 1).first()
+  query = Post.query.filter(Post.type_id != hide_post_type.id)
+  if not g.current_user or not g.current_user.can(Permission.ADMIN):
+    query = query.filter_by(hide = False)
+  pagination = query.order_by(Post.timestamp.desc()).paginate(page, per_page = per_page, error_out = False)
+  post_list = list(map(lambda post: post.abstract_json(), pagination.items))
+  return jsonify({
+    'list': post_list,
+    'page': page,
+    'total': pagination.total,
+    'perPage': per_page
+  })
+
+
+@api.route('/get-type-posts/', methods=["POST"])
 def get_posts():
   post_type_id = request.json.get('post_type', '')
   post_type = None
@@ -46,20 +64,28 @@ def get_posts():
     'page': page
   })
 
+@api.route('/get-post/<post_id>/<post_type_id>')
 @api.route('/get-post/<post_id>')
-def get_post(post_id):
-  post = Post.query.get(post_id)
+def get_post(post_id, post_type_id = None):
+  query = Post.query
+  if post_type_id:
+    post_type = PostType.query.get(post_type_id)
+    if post_type:
+      query = post_type.posts
+  hide_post_type = PostType.query.filter_by(special = 1).first()
+  query = query.filter(Post.type_id != hide_post_type.id)
+  post = query.filter_by(id = post_id).first()
   if not post:
     return not_found('查询不到该文章', True)
   json = post.to_json()
   post_type = post.type
   condition = {}
   if g.current_user and g.current_user.can(Permission.ADMIN):
-    post_list = post_type.posts.all()
+    post_list = query.all()
   else:
     if post.is_about_me():
       return not_found('查询不到该文章', True)
-    post_list = post_type.posts.filter_by(hide = False).all()
+    post_list = query.filter_by(hide = False).all()
     if not post in post_list:
       return not_found('查询不到该文章', True)
   json['like'] = False

@@ -259,7 +259,8 @@ class Post(db.Model):
       'timestamp': time.mktime(self.timestamp.timetuple()),
       'read_times': self.read_times,
       'likes': self.likes.count(),
-      'type_id': self.type_id,
+      'comment_times': self.comments.count(),
+      'type': self.type_id,
       'abstract_image': self.abstract_image
     }
     return json_post
