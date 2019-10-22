@@ -243,8 +243,10 @@ class Post(db.Model):
       except:
         db.session.rollback()
   
+  def add_read(self):
+    self.read_times += 1
+
   def is_about_me(self):
-    print 
     return self.type.alias == 'about_me'
 
   def to_json(self):
@@ -259,7 +261,6 @@ class Post(db.Model):
       'timestamp': time.mktime(self.timestamp.timetuple()),
       'read_times': self.read_times,
       'likes': self.likes.count(),
-      'comment_times': self.comments.count(),
       'type': self.type_id,
       'abstract_image': self.abstract_image
     }

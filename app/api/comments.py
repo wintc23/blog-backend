@@ -15,6 +15,9 @@ def add_comment():
   post_id = request.json.get('post_id', '')
   if not post_id:
     return bad_request('请求错误！', True)
+  post = Post.query.get(post_id)
+  if not post:
+    return bad_request('请求错误！', True)
   params['body'] = body
   params['post_id'] = post_id
   params['author'] = g.current_user
@@ -28,7 +31,13 @@ def add_comment():
     params['hide'] = False
   comment = Comment(**params)
   db.session.add(comment)
-  return jsonify({ 'message': '评论成功（评论审核通过才会公开）', 'notify': True })
+  if g.current_user and g.current_user.can(Permission.ADMIN):
+    comments = post.comments.all()
+  else:
+    hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
+    comments = post.comments.filter(hideCondition).all()
+  comments = list(map(lambda comment: comment.to_json(), comments))
+  return jsonify({ "comment_times": len(comments), 'comments': comments })
 
 @api.route('/get-comments/', methods = ['POST'])
 @permission_required(Permission.ADMIN)

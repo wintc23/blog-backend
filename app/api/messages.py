@@ -1,4 +1,4 @@
-from flask import request, jsonify, g
+from flask import request, jsonify, g, current_app
 
 from . import api
 from .errors import *
@@ -10,8 +10,8 @@ from sqlalchemy import or_
 @api.route('/get-messages/', methods=["POST"])
 def get_messages():
   page = request.json.get('page', '')
-  per_page = request.json.get('per_page', '')
-  if not page or not per_page:
+  per_page = current_app.config['FLASK_BBS_PER_PAGE']
+  if not page:
     return bad_request('参数错误')
   hideCondition = or_(Message.hide == False, Message.author == g.current_user)
   pagination = Message.query.filter_by(response_id = None).filter(hideCondition).order_by(Message.timestamp.desc()).paginate(
@@ -30,7 +30,8 @@ def get_messages():
   return jsonify({
     'list': msg_list,
     'total': total,
-    'page': page
+    'page': page,
+    'per_page': per_page
   })
 
 @api.route('/add-message/', methods = ['POST'])
@@ -53,13 +54,14 @@ def add_message():
     params['hide'] = False
   msg = Message(**params)
   db.session.add(msg)
-  return jsonify({ 'message': '留言成功（留言审核通过才会公开）', 'notify': True })
+  db.session.commit()
+  return jsonify(msg.to_json())
 
 @api.route('/get-hide-messages/', methods = ['POST'])
 @permission_required(Permission.ADMIN)
 def get_hide_messages():
   page = request.json.get('page', 1)
-  per_page = request.json.get('per_page', 10)
+  per_page = current_app.config['FLASK_BBS_PER_PAGE']
   pagination = Message.query.order_by(Message.timestamp.desc()).order_by(Message.hide.desc()).paginate(
     page,
     per_page = per_page,
