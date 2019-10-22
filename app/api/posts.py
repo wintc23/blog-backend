@@ -72,7 +72,8 @@ def get_post(post_id, post_type_id = None):
     if post_type:
       query = post_type.posts
   hide_post_type = PostType.query.filter_by(special = 1).first()
-  query = query.filter(Post.type_id != hide_post_type.id)
+  if not g.current_user or not g.current_user.can(Permission.ADMIN):
+    query = query.filter(Post.type_id != hide_post_type.id)
   post = query.filter_by(id = post_id).first()
   if not post:
     return not_found('查询不到该文章', True)
