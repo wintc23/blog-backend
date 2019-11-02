@@ -100,8 +100,8 @@ def get_admin_info():
     return not_found('未找到管理员信息')
   user = role.users.first()
   json = user.to_json()
-  # post_count = Post.query.filter(and_(Post.hide == False, Post.type_id != post_type.id)).count()
-  json['post_count'] = Post.query.count()
+  post_count = Post.query.filter(and_(Post.hide == False, Post.type_id != post_type.id)).count()
+  json['post_count'] = post_count
   # json['like_count'] = Like.query.count()
   # json['comment_count'] = Comment.query.filter_by(hide = False).count()
   # json['message_count'] = Message.query.filter_by(hide = False).count()
