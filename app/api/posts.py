@@ -2,7 +2,7 @@
 from flask import request, current_app, jsonify, g
 from .. import db
 from . import api
-from ..models import PostType, Post, Permission, Like, Comment
+from ..models import PostType, Post, Permission, Like, Comment, Tag
 from .errors import *
 from .decorators import *
 from sqlalchemy import or_
@@ -29,7 +29,7 @@ def get_post_list():
     'list': post_list,
     'page': page,
     'total': pagination.total,
-    'perPage': per_page
+    'per_page': per_page
   })
 
 @api.route('/get-type-posts/', methods=["POST"])
@@ -41,8 +41,7 @@ def get_posts():
   if not post_type:
     post_type = PostType.query.filter_by(default = True).first()
   if not post_type:
-    response = server_error('服务器查询数据库失败', True)
-    return response
+    return server_error('服务器查询数据库失败', True)
   page = request.json.get('page', 1)
   per_page = request.json.get('per_page', 5)
   query = post_type.posts
@@ -107,10 +106,13 @@ def get_post(post_id, post_type_id = None):
   else:
     hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
     comments = post.comments.filter(hideCondition).all()
+  tags = post.tags.all()
+  
   json['before'] = before
   json['after'] = after
   json['comment_times'] = len(comments)
   json['comments'] = list(map(lambda comment: comment.to_json(), comments))
+  json['tags'] =  list(map(lambda tag: tag.id, tags))
   return jsonify(json)
 
 @api.route('/add-post/<post_type_id>')
@@ -131,8 +133,21 @@ def save_post():
   post = Post.query.get(post_id)
   if not post:
     return not_found('查找不到文章', True)
-  for key in request.json:
+
+  # 基本属性
+  for key in ['title', 'hide', 'abstract', 'hide', 'body_html', 'type_id', 'abstract_image', 'topic_id']:
     setattr(post, key, request.json[key])
+  print(request.json)
+  # 标签
+  for tag in post.tags.all():
+    if not tag.id in request.json['tags']:
+      post.tags.remove(tag)
+    else:
+      request.json['tags'].remove(tag.id)
+  for tag_id in request.json['tags']:
+    tag = Tag.query.get(tag_id)
+    if tag:
+      post.tags.append(tag)
   db.session.add(post)
   return jsonify({
     'message': '保存成功',
@@ -198,3 +213,12 @@ def cancel_like_post(post_id):
     if post.likes.filter_by(author = g.current_user).first():
       json['like'] = True
   return jsonify(json)
+
+@api.route('/get-popu-posts/')
+def get_top_ten():
+  post_type = PostType.query.filter_by(default = True).first()
+  if not post_type:
+    return server_error('服务器查询数据库失败')
+  pagination = post_type.posts.order_by(Post.read_times.desc()).paginate(1, per_page = 10, error_out = False)
+  post_list = list(map(lambda post: post.abstract_json(), pagination.items))
+  return jsonify({ 'list': post_list })

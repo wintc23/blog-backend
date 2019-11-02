@@ -1,5 +1,5 @@
 import os
-from app.models import User, Role, Post, Like, Comment, PostType, Message
+from app.models import User, Role, Post, Like, Comment, PostType, Message, Tag, Topic
 
 from flask_script import Manager, Shell
 from flask_migrate import Migrate, MigrateCommand
@@ -21,6 +21,8 @@ def make_shell_context():
     PostType = PostType,
     app = app,
     Message = Message,
+    Tag = Tag,
+    Topic = Topic,
     db = db)
 
 manager.add_command('shell', Shell(make_context = make_shell_context))

@@ -9,8 +9,9 @@ from flask import g, jsonify, request, current_app
 from . import api
 from .errors import *
 from .. import db
-from ..models import User, Permission
+from ..models import User, Permission, Tag, Post, Role, PostType, Comment, Message, Like
 from .decorators import login_required
+from sqlalchemy import and_
 
 @api.route('/github-login/<code>')
 def github_login(code):
@@ -37,7 +38,6 @@ def github_login(code):
   req2 = urllib.request.Request(url='https://api.github.com/user?access_token='+access_token, headers=headers)
   html2 = urllib.request.urlopen(req2).read().decode('utf-8')
   info = json.loads(html2)
-  print(info, '~~~~~~~~~~~~~~')
   id_string = 'github' + str(info['id'])
   user = User.query.filter_by(id_string=id_string).first()
   if not user:
@@ -89,3 +89,21 @@ def get_self_info():
 @api.route('/check-admin/')
 def checkAdmin():
   return jsonify({ 'admin': bool(g.current_user and g.current_user.can(Permission.ADMIN))})
+
+@api.route('/get-user-info/')
+def get_admin_info():
+  role = Role.query.filter_by(name = 'Administrator').first()
+  if not role:
+    return not_found('未找到管理员信息')
+  post_type = PostType.query.filter_by(special = 1).first()
+  if not post_type:
+    return not_found('未找到管理员信息')
+  user = role.users.first()
+  json = user.to_json()
+  # post_count = Post.query.filter(and_(Post.hide == False, Post.type_id != post_type.id)).count()
+  json['post_count'] = Post.query.count()
+  # json['like_count'] = Like.query.count()
+  # json['comment_count'] = Comment.query.filter_by(hide = False).count()
+  # json['message_count'] = Message.query.filter_by(hide = False).count()
+
+  return jsonify(json)

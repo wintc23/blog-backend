@@ -58,9 +58,10 @@ def get_comments ():
 
 @api.route('/delete-comment/<comment_id>')
 @permission_required(Permission.ADMIN)
-def deleteComment (comment_id):
+def delete_comment (comment_id):
   if not comment_id:
     return not_found('未找到该评论', True)
+
   comment = Comment.query.get(comment_id)
   if not comment:
     return not_found('未找到该评论', True)

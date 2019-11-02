@@ -13,13 +13,18 @@ class Permission:
   MODERATE = 8
   ADMIN = 16
 
+post_tag_relations = db.Table('post_tag_relations',
+  db.Column('post_id', db.Integer, db.ForeignKey('tags.id')),
+  db.Column('tag_id', db.Integer, db.ForeignKey('posts.id'))
+)
+
 class Role(db.Model):
   __tablename__ = 'roles'
   id = db.Column(db.Integer, primary_key = True)
   name = db.Column(db.String(64), unique = True)
   permissions = db.Column(db.Integer)
   default = db.Column(db.Boolean, default = False, index = True)
-  users = db.relationship('User', backref='role')
+  users = db.relationship('User', backref='role', lazy = 'dynamic')
 
   def __init__(self, **kwargs):
     super(Role, self).__init__(**kwargs)
@@ -205,7 +210,8 @@ class Post(db.Model):
   __tablename__ = 'posts'
   id = db.Column(db.Integer, primary_key = True)
   title = db.Column(db.Text)
-  body = db.Column(db.Text)
+  keywords = db.Column(db.String(64)) # 关键字
+  description = db.Column(db.String(128)) # 描述
   body_html = db.Column(db.Text)
   hide = db.Column(db.Boolean, default = False)
   secret_code = db.Column(db.Text, default = '')
@@ -217,6 +223,11 @@ class Post(db.Model):
   comments = db.relationship('Comment', backref = 'post', lazy = 'dynamic')
   read_times = db.Column(db.Integer, default = 0)
   likes = db.relationship('Like', backref = 'post', lazy = 'dynamic')
+  tags = db.relationship('Tag',
+    secondary = post_tag_relations,
+    backref = db.backref('tags', lazy = 'dynamic'),
+    lazy='dynamic')
+  topic_id = db.Column(db.Integer, db.ForeignKey('topics.id'))
 
   @staticmethod
   def generate_fake(count = 100):
@@ -256,13 +267,15 @@ class Post(db.Model):
       'title': self.title,
       'abstract': self.abstract,
       'hide': self.hide,
-      'body': self.body,
-      'body_html': self.body_html or self.body,
+      'body_html': self.body_html,
       'timestamp': time.mktime(self.timestamp.timetuple()),
       'read_times': self.read_times,
       'likes': self.likes.count(),
-      'type': self.type_id,
-      'abstract_image': self.abstract_image
+      'type_id': self.type_id,
+      'abstract_image': self.abstract_image,
+      'keywords': self.keywords,
+      'topic_id': self.topic_id,
+      'description': self.description
     }
     return json_post
   
@@ -277,7 +290,8 @@ class Post(db.Model):
       'likes': self.likes.count(),
       'comment_times': self.comments.count(),
       'type': self.type_id,
-      'abstract_image': self.abstract_image
+      'abstract_image': self.abstract_image,
+      'topic': self.topic_id
     }
     return json_post
 
@@ -404,15 +418,32 @@ class Message(db.Model):
       except:
         db.session.rollback()
 
-# class Visit(db.Model):
-#   __tablename__ = 'site_info'
-#   timestamp = db.Column(db.DateTime, index = True, default = datetime.utcnow)
-#   # ip = db.Column()
-#   click_times = db.Column(db.Integer, default = 0)
-  
-#   def to_json(self):
-#     return {
-#       'start_time': time.mktime(self.start_time.timetuple()),
-#       'click_times': self.click_times,
-#       'post_num': Post.query.count()
-#     }
+class Tag(db.Model):
+  __tablename__ = 'tags'
+  id = db.Column(db.Integer, primary_key = True)
+  title = db.Column(db.String(64))
+  posts = db.relationship('Post',
+    secondary = post_tag_relations,
+    backref = db.backref('posts', lazy = 'dynamic'),
+    lazy='dynamic')
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'title': self.title,
+      'post_count': self.posts.count()
+    }
+
+class Topic(db.Model):
+  __tablename__ = 'topics'
+  id = db.Column(db.Integer, primary_key = True)
+  title = db.Column(db.Text)
+  posts = db.relationship('Post', backref = 'topic', lazy = 'dynamic')
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'title': self.title,
+      'post_count': self.posts.count()
+    }
+

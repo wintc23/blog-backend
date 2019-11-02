@@ -13,7 +13,9 @@ def get_messages():
   per_page = current_app.config['FLASK_BBS_PER_PAGE']
   if not page:
     return bad_request('参数错误')
-  hideCondition = or_(Message.hide == False, Message.author == g.current_user)
+  hideCondition = Message.hide == False
+  if g.current_user:
+    hideCondition = or_(Message.hide == False, Message.author_id == g.current_user.id)
   pagination = Message.query.filter_by(response_id = None).filter(hideCondition).order_by(Message.timestamp.desc()).paginate(
     page,
     per_page = per_page,
@@ -76,14 +78,14 @@ def get_hide_messages():
 
 @api.route('/delete-message/<msg_id>')
 @permission_required(Permission.ADMIN)
-def deleteMessage(msg_id):
+def delete_message(msg_id):
   if not msg_id:
     return not_found('未找到该留言', True)
   msg = Message.query.get(msg_id)
   if not msg:
     return not_found('未找到该留言', True)
   db.session.delete(msg)
-  return ({ 'message': '留言删除成功', 'notify': True })
+  return jsonify({ 'message': '留言删除成功', 'notify': True })
 
 @api.route('/set-message-show/<msg_id>')
 @permission_required(Permission.ADMIN)
