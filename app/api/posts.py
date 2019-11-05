@@ -70,18 +70,17 @@ def get_post(post_id, post_type_id = None):
     post_type = PostType.query.get(post_type_id)
     if post_type:
       query = post_type.posts
+  isAdmin = g.current_user and g.current_user.can(Permission.ADMIN) 
   hide_post_type = PostType.query.filter_by(special = 1).first()
-  if not g.current_user or not g.current_user.can(Permission.ADMIN):
+  if not isAdmin:
     query = query.filter(Post.type_id != hide_post_type.id)
   post = query.filter_by(id = post_id).first()
   if not post:
     return not_found('查询不到该文章', True)
-  post.add_read()
-  db.session.add(post)
   json = post.to_json()
   post_type = post.type
   condition = {}
-  if g.current_user and g.current_user.can(Permission.ADMIN):
+  if isAdmin:
     post_list = query.all()
   else:
     if post.is_about_me():
@@ -107,6 +106,10 @@ def get_post(post_id, post_type_id = None):
     hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
     comments = post.comments.filter(hideCondition).all()
   tags = post.tags.all()
+
+  if not isAdmin:
+    post.add_read()
+    db.session.add(post)
   
   json['before'] = before
   json['after'] = after
