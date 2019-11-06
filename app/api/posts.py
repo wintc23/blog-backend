@@ -138,7 +138,7 @@ def save_post():
     return not_found('查找不到文章', True)
 
   # 基本属性
-  for key in ['title', 'hide', 'abstract', 'hide', 'body_html', 'type_id', 'abstract_image', 'topic_id']:
+  for key in ['title', 'hide', 'abstract', 'hide', 'body_html', 'type_id', 'abstract_image', 'topic_id', 'keywords', 'description']:
     setattr(post, key, request.json[key])
   print(request.json)
   # 标签
