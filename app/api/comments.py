@@ -4,6 +4,7 @@ from . import api
 from ..models import Post, Comment, Permission
 from .errors import *
 from .decorators import login_required, permission_required
+from sqlalchemy import or_
 
 @api.route('/add-comment/', methods = ['POST'])
 @login_required
@@ -30,7 +31,9 @@ def add_comment():
   if g.current_user and g.current_user.can(Permission.ADMIN):
     params['hide'] = False
   comment = Comment(**params)
+  print(comment.hide, '-----------------------------')
   db.session.add(comment)
+  db.session.commit()
   if g.current_user and g.current_user.can(Permission.ADMIN):
     comments = post.comments.all()
   else:
