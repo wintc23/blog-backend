@@ -12,6 +12,7 @@ from .. import db
 from ..models import User, Permission, Tag, Post, Role, PostType, Comment, Message, Like
 from .decorators import login_required
 from sqlalchemy import and_
+from ..email import send_email
 
 @api.route('/github-login/<code>')
 def github_login(code):
@@ -63,6 +64,8 @@ def github_login(code):
     try:
       db.session.add(user)
       db.session.commit()
+      reciver = current_app.config['FLASK_ADMIN']
+      send_email(reciver, '用户注册', mail_type=1, username=info['login'])
     except:
       db.session.rollback()
       response = jsonify({ 'error': 'create user error', 'message': '创建用户失败，请重新登录' })

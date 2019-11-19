@@ -5,6 +5,7 @@ from flask_script import Manager, Shell
 from flask_migrate import Migrate, MigrateCommand
 from app import create_app, db
 from flask_cors import *
+from app.email import send_email
 
 app = create_app(os.getenv('FLASK_CONFIG') or 'default')
 CORS(app, supports_credentials=True)
@@ -23,6 +24,7 @@ def make_shell_context():
     Message = Message,
     Tag = Tag,
     Topic = Topic,
+    send_email = send_email,
     db = db)
 
 manager.add_command('shell', Shell(make_context = make_shell_context))

@@ -1,0 +1,9 @@
+{% if mail_type == 1 %}
+  {{ username }} 通过github登录了博客。
+{% elif mail_type == 2 %}
+  {{ username }} 评论了文章《{{ title }}》: {{ content }}
+  点击查看：<a href = {{ url }}></a>。
+{% elif mail_type == 3 %}
+  <span>木马tc<span>回复了您在其网站的留言: {{ content }}。
+  点击查看：<a href = {{ url }}></a>。
+{% endif %}
