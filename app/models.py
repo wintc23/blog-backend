@@ -431,7 +431,7 @@ class Tag(db.Model):
     return {
       'id': self.id,
       'title': self.title,
-      'post_count': self.posts.count()
+      'post_count': self.posts.filter_by(hide = False).count()
     }
 
 class Topic(db.Model):

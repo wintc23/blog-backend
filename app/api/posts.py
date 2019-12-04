@@ -32,6 +32,31 @@ def get_post_list():
     'per_page': per_page
   })
 
+@api.route('/get-tag-posts/', methods=["POST"])
+def get_tag_posts():
+  tag_id = request.json.get('tag_id', '')
+  tag = Tag.query.get(tag_id)
+  if not tag:
+    return server_error('服务器查询数据库失败', True)
+  page = request.json.get('page', 1)
+  per_page = current_app.config['FLASK_POSTS_PER_PAGE']
+  query = tag.posts
+  if not g.current_user or not g.current_user.can(Permission.ADMIN):
+    query = query.filter_by(hide = False)
+  pagination = query.order_by(Post.timestamp.desc()).paginate(
+    page,
+    per_page = per_page,
+    error_out = False
+  )
+  post_list = list(map(lambda post: post.abstract_json(), pagination.items))
+
+  return jsonify({
+    'list': post_list,
+    'total': pagination.total,
+    'page': page,
+    'per_page': per_page
+  })
+
 @api.route('/get-type-posts/', methods=["POST"])
 def get_posts():
   post_type_id = request.json.get('post_type', '')
