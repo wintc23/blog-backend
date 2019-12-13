@@ -19,6 +19,7 @@ class Config:
 
   QI_NIU_ACCESS_KEY = os.environ.get('QI_NIU_ACCESS_KEY')
   QI_NIU_SECRET_KEY = os.environ.get('QI_NIU_SECRET_KEY')
+
   @staticmethod
   def init_app(app):
     pass
@@ -28,18 +29,20 @@ class DevelopmentConfig(Config):
   SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL')
   QI_NIU_BUCKET=os.environ.get('DEV_QI_NIU_BUCKET')
   QI_NIU_LINK_URL=os.environ.get('DEV_QI_NIU_LINK_URL')
-
+  GIT_BACKUP_DIR = os.environ.get('DEV_GIT_BACKUP_DIR')
 
 class TestingConfig(Config):
   TESTING = True
   SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL')
   QI_NIU_BUCKET=os.environ.get('DEV_QI_NIU_BUCKET')
   QI_NIU_LINK_URL=os.environ.get('DEV_QI_NIU_LINK_URL')
+  GIT_BACKUP_DIR = os.environ.get('DEV_GIT_BACKUP_DIR')
 
 class ProductionConfig(Config):
   SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
   QI_NIU_BUCKET=os.environ.get('QI_NIU_BUCKET')
   QI_NIU_LINK_URL=os.environ.get('QI_NIU_LINK_URL')
+  GIT_BACKUP_DIR = os.environ.get('GIT_BACKUP_DIR')
 
 config = {
   'development': DevelopmentConfig,

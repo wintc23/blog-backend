@@ -6,6 +6,7 @@ cd ~
 source env.sh
 cd /home/lushg/blog-backend
 source venv/bin/activate
+git clean -df
 git pull origin master
 pip install -r requirement.txt
 python main.py db upgrade

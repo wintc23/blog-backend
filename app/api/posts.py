@@ -6,6 +6,8 @@ from ..models import PostType, Post, Permission, Like, Comment, Tag
 from .errors import *
 from .decorators import *
 from sqlalchemy import or_
+from ..backup import backup_to_git
+from json import dumps
 
 @api.route('/get-post-type/')
 def get_post_types():
@@ -161,7 +163,7 @@ def save_post():
   post = Post.query.get(post_id)
   if not post:
     return not_found('查找不到文章', True)
-
+  update_type = 1
   # 基本属性
   for key in ['title', 'hide', 'abstract', 'hide', 'body_html', 'type_id', 'abstract_image', 'topic_id', 'keywords', 'description']:
     setattr(post, key, request.json[key])
@@ -177,6 +179,8 @@ def save_post():
     if tag:
       post.tags.append(tag)
   db.session.add(post)
+  # 异步备份和推送百度
+  backup_to_git(dumps(post.to_json()), 'posts/%s.json'%post.id)
   return jsonify({
     'message': '保存成功',
     'notify': True
