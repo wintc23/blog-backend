@@ -17,7 +17,7 @@ def git_backup_async (git_dir, path, sText):
   print('写入内容完毕！')
   f.close()
   os.system('''
-    cd %s`
+    cd %s
     git add .
     git commit -m backup
     git push -u origin master
