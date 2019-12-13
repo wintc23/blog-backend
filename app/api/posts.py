@@ -179,7 +179,7 @@ def save_post():
       post.tags.append(tag)
   db.session.add(post)
   # 异步备份和推送百度
-  git_backup('posts/%s.json'%post.id, dumps(post.to_json()))
+  git_backup('posts/%s.json'%post["id"], dumps(post.to_json()))
   return jsonify({
     'message': '保存成功',
     'notify': True
