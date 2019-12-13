@@ -5,7 +5,7 @@ from flask import current_app
 from threading import Thread
 
 def git_backup_async (git_dir, path, sText):
-  path_list = sText.split('/')
+  path_list = path.split('/')
   length = len(path_list)
   if length > 1:
     path_list = path_list[0:length - 1]
