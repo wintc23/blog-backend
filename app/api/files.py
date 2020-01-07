@@ -8,6 +8,7 @@ from . import api
 from flask import g, jsonify, request, send_from_directory, current_app
 from .decorators import permission_required
 from ..models import Permission
+from ..qiniu import get_token
 
 @api.route('/get-file/')
 def get_file():
@@ -22,17 +23,8 @@ def get_file():
 @api.route('/get-qiniu-token/<filename>')
 @permission_required(Permission.ADMIN)
 def get_qiniu_token(filename):
-  # filename = str(uuid.uuid1()).replace('-', '')
-  policy = {
-    "returnBody": "{ \"name\": $(fname), \"key\": $(key) }"
-  }
-  access_key = current_app.config['QI_NIU_ACCESS_KEY']
-  secret_key = current_app.config['QI_NIU_SECRET_KEY']
-  bucket = current_app.config['QI_NIU_BUCKET']
+  token = get_token(filename)
   domain = current_app.config['QI_NIU_LINK_URL']
-
-  q = Auth(access_key, secret_key)
-  token = q.upload_token(bucket, filename, 600, policy)
   return jsonify({ 'token': token, 'domain': domain })
 
 @api.route('/save-image/', methods = ['PUT'])

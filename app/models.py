@@ -70,7 +70,7 @@ class Role(db.Model):
 class User(db.Model):
   __tablename__ = 'users'
   id = db.Column(db.Integer, primary_key = True)
-  id_string = db.Column(db.String(32), unique = True, index = True)
+  id_string = db.Column(db.String(64), unique = True, index = True)
   email = db.Column(db.String(64), unique = True, index = True)
   username = db.Column(db.String(64), index = True)
   avatar = db.Column(db.String(64), default="default")
@@ -78,7 +78,6 @@ class User(db.Model):
   member_since = db.Column(db.DateTime(), default = datetime.utcnow)
   last_seen = db.Column(db.DateTime(), default = datetime.utcnow)
   about_me = db.Column(db.Text())
-
   posts = db.relationship('Post', backref = 'author', lazy = 'dynamic')
   comments = db.relationship('Comment', backref = 'author', lazy = 'dynamic')
   likes = db.relationship('Like', backref = 'author', lazy = 'dynamic')
@@ -127,11 +126,14 @@ class User(db.Model):
   def is_administrator(self):
     return self.can(Permission.ADMIN)
 
+  def avatar_url(self):
+    return current_app.config['QI_NIU_LINK_URL'] + '/' + self.avatar
+
   def to_json(self):
     return {
       'id': self.id,
       'username': self.username,
-      'avatar': self.avatar,
+      'avatar': self.avatar_url(),
       'about_me': self.about_me,
       'admin': self.is_administrator(),
     }
@@ -140,7 +142,7 @@ class User(db.Model):
     return {
       'id': self.id,
       'username': self.username,
-      'avatar': self.avatar,
+      'avatar': self.avatar_url(),
       'about_me': self.about_me,
       'admin': self.is_administrator(),
     }

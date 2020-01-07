@@ -4,6 +4,7 @@ import json
 import uuid
 import os
 import sys
+import re
 
 from flask import g, jsonify, request, current_app
 from . import api
@@ -13,6 +14,39 @@ from ..models import User, Permission, Tag, Post, Role, PostType, Comment, Messa
 from .decorators import login_required
 from sqlalchemy import and_
 from ..email import send_email
+from ..qiniu import get_token
+from requests_toolbelt import MultipartEncoder
+from qiniu import put_data
+
+def save_file(url):
+  try:
+    req = urllib.request.Request(url)
+    res = urllib.request.urlopen(req)
+    filename = str(uuid.uuid4()).replace('-', '')
+    print('filename', filename)
+    token = get_token(filename)
+    ret, _ = put_data(token, filename, data = res.read())
+    return ret.get('key')
+  except Exception as e:
+    return ''
+
+def save_all_user_avatar(base):
+  userList = User.query.all()
+  defaultname = ''
+  for user in userList:
+    if user.avatar == 'default':
+      if not defaultname:
+        defaultname = save_file(base + '/get-file/?path=avatar&filename=' + user.avatar)
+      user.avatar = defaultname
+    else:
+      user.avatar = save_file(base + '/get-file/?path=avatar&filename=' + user.avatar)
+    db.session.add(user)
+  try:
+    db.session.commit()
+  except Exception as e:
+    print(e, '~~~~~~~')
+    db.session.rollback()
+  print('done')
 
 @api.route('/github-login/<code>')
 def github_login(code):
@@ -42,36 +76,109 @@ def github_login(code):
   id_string = 'github' + str(info['id'])
   user = User.query.filter_by(id_string=id_string).first()
   if not user:
-    avatar_url = info['avatar_url']
-    if avatar_url:
-      filename = str(uuid.uuid1())
-      dirname, _ = os.path.split(os.path.abspath(sys.argv[0]))
-      fold_path = dirname + '/../files/avatar/'
-      if not os.path.exists(fold_path):
-        os.makedirs(fold_path)
-      upload_path = fold_path + filename
-      urllib.request.urlretrieve(avatar_url, upload_path)
-      res = urllib.request.urlretrieve(avatar_url, upload_path)
-      avatar = filename
+    avatar = save_file(avatar_url)
     register_info = {
       'username': info['login'],
       'id_string': id_string,
       'avatar': avatar
     }
     if info['email']:
-      register_info['email']
+      register_info['email'] = info['email']
     user = User(**register_info)
     try:
       db.session.add(user)
       db.session.commit()
       reciver = current_app.config['FLASK_ADMIN']
       send_email(reciver, '用户注册', mail_type=1, username=info['login'])
-    except:
+    except Exception as e:
       db.session.rollback()
       response = jsonify({ 'error': 'create user error', 'message': '创建用户失败，请重新登录' })
       response.status_code = 500
       return response
-    db.session.add(user)
+  token = user.generate_auth_token(3600 * 24 * 30)
+  return jsonify({ 'token': token })
+
+@api.route('/qq-login/', methods=["POST"])
+def qq_login():
+  code = request.json.get('code', '')
+  redirect = request.json.get('redirect', '')
+  secret = current_app.config['FLASK_QQ_SECRET']
+  client_id = current_app.config['FLASK_QQ_CLIENT_ID']
+  url = 'https://graph.qq.com/oauth2.0/token'
+  data = {
+    'grant_type': 'authorization_code',
+    'client_id': client_id,
+    'client_secret': secret,
+    'code': code,
+    'redirect_uri': redirect
+  }
+  headers = {
+    'User-Agent': 'Mozilla/4.0 (compatible; MSIE 5.5; Windows NT)',
+    'Accept': 'application/json'
+  }
+  params = urllib.parse.urlencode(data).encode('utf-8')
+  req = urllib.request.Request(url, params, headers)
+  print(req)
+  html = urllib.request.urlopen(req).read().decode('utf-8')
+  
+  token_info = {}
+  lst = html.split('&')
+  for sText in lst:
+    subList = sText.split('=')
+    if len(subList) != 2:
+      continue
+    key, value = subList
+    token_info[key] = value
+  
+  if not 'access_token' in token_info:
+    return bad_request('链接已失效，请重新登录', True)
+  access_token = token_info['access_token']
+  req2 = urllib.request.Request(url="https://graph.qq.com/oauth2.0/me?access_token="+access_token, headers=headers)
+  html2 = urllib.request.urlopen(req2).read().decode('utf-8')
+  reg = re.compile('\{.*\}')
+  info_str = reg.search(html2).group(0)
+  info = json.loads(info_str)
+  if not 'openid' in info:
+    return bad_request('链接已失效，请重新登录', True)
+  id_string = 'qq' + info['openid']
+  user = User.query.filter_by(id_string=id_string).first()
+  print('user', user)
+  if not user:
+    data = {
+      'openid': info['openid'],
+      'access_token': access_token,
+      'oauth_consumer_key': client_id
+    }
+    params3 = urllib.parse.urlencode(data).encode('utf-8')
+    url3 = 'https://graph.qq.com/user/get_user_info'
+    req3 = urllib.request.Request(url = url3, data = params3, headers = headers)
+    html3 = urllib.request.urlopen(req3).read().decode('utf-8')
+    user_info = json.loads(html3)
+
+    avatar = ''
+    if user_info.get("figureurl_qq_2"):
+      avatar = save_file(user_info["figureurl_qq_2"])
+    if not avatar:
+      avatar = save_file(user_info['figureurl_qq_1'])
+    register_info = {
+      'username': user_info['nickname'],
+      'id_string': 'qq' + info['openid'],
+      'avatar': avatar
+    }
+    user = User(**register_info)
+    try:
+
+      db.session.add(user)
+      db.session.commit()
+
+      reciver = current_app.config['FLASK_ADMIN']
+      send_email(reciver, '用户注册', mail_type=2, username=info['login'])
+    except Exception as e:
+      print(e)
+      db.session.rollback()
+      response = jsonify({ 'error': 'create user error', 'message': '创建用户失败，请重新登录' })
+      response.status_code = 500
+      return response
   token = user.generate_auth_token(3600 * 24 * 30)
   return jsonify({ 'token': token })
 
