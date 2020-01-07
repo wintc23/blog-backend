@@ -15,7 +15,6 @@ from .decorators import login_required
 from sqlalchemy import and_
 from ..email import send_email
 from ..qiniu import get_token
-from requests_toolbelt import MultipartEncoder
 from qiniu import put_data
 
 def save_file(url):
@@ -41,6 +40,7 @@ def save_all_user_avatar(base):
     else:
       user.avatar = save_file(base + '/get-file/?path=avatar&filename=' + user.avatar)
     db.session.add(user)
+    print(user.avatar, '~~~~~~~~~~~~~~~~')
   try:
     db.session.commit()
   except Exception as e:
