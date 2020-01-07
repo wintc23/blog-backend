@@ -40,6 +40,7 @@ class TestingConfig(Config):
   GIT_BACKUP_DIR = os.environ.get('DEV_GIT_BACKUP_DIR')
 
 class ProductionConfig(Config):
+  DEBUG = True
   SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
   QI_NIU_BUCKET=os.environ.get('QI_NIU_BUCKET')
   QI_NIU_LINK_URL=os.environ.get('QI_NIU_LINK_URL')

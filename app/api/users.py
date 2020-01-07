@@ -130,6 +130,7 @@ def qq_login():
     key, value = subList
     token_info[key] = value
   
+  print(token_info, html, 'token_info')  
   if not 'access_token' in token_info:
     return bad_request('链接已失效，请重新登录', True)
   access_token = token_info['access_token']
@@ -138,6 +139,7 @@ def qq_login():
   reg = re.compile('\{.*\}')
   info_str = reg.search(html2).group(0)
   info = json.loads(info_str)
+  print(info, 'info')
   if not 'openid' in info:
     return bad_request('链接已失效，请重新登录', True)
   id_string = 'qq' + info['openid']
@@ -172,7 +174,7 @@ def qq_login():
       db.session.commit()
 
       reciver = current_app.config['FLASK_ADMIN']
-      send_email(reciver, '用户注册', mail_type=2, username=info['login'])
+      send_email(reciver, '用户注册', mail_type = 2, username = user_info['nickname'])
     except Exception as e:
       print(e)
       db.session.rollback()
