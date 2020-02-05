@@ -135,7 +135,8 @@ class User(db.Model):
       'username': self.username,
       'avatar': self.avatar_url(),
       'about_me': self.about_me,
-      'admin': self.is_administrator(),
+      'email': self.email,
+      'admin': self.is_administrator()
     }
 
   def get_detail(self):
@@ -143,6 +144,7 @@ class User(db.Model):
       'id': self.id,
       'username': self.username,
       'avatar': self.avatar_url(),
+      'email': self.email,
       'about_me': self.about_me,
       'admin': self.is_administrator(),
     }
@@ -219,17 +221,17 @@ class Post(db.Model):
   secret_code = db.Column(db.Text, default = '')
   abstract = db.Column(db.Text)
   abstract_image = db.Column(db.Text())
+  read_times = db.Column(db.Integer, default = 0)
   timestamp = db.Column(db.DateTime, index = True, default = datetime.utcnow)
   author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
   type_id = db.Column(db.Integer, db.ForeignKey('post_type.id'))
+  topic_id = db.Column(db.Integer, db.ForeignKey('topics.id'))
   comments = db.relationship('Comment', backref = 'post', lazy = 'dynamic')
-  read_times = db.Column(db.Integer, default = 0)
   likes = db.relationship('Like', backref = 'post', lazy = 'dynamic')
   tags = db.relationship('Tag',
     secondary = post_tag_relations,
     backref = db.backref('tags', lazy = 'dynamic'),
     lazy='dynamic')
-  topic_id = db.Column(db.Integer, db.ForeignKey('topics.id'))
 
   @staticmethod
   def generate_fake(count = 100):
@@ -310,14 +312,16 @@ class Comment(db.Model):
   hide = db.Column(db.Boolean, default = True)
 
   def to_json(self):
+    post = Post.query.get(self.post_id)
     return {
       'id': self.id,
       'body': self.body,
       'author_id': self.author_id,
-      'post_id': self.post_id,
       'response_id': self.response_id,
       'timestamp': time.mktime(self.timestamp.timetuple()),
-      'hide': self.hide
+      'hide': self.hide,
+      'post_id': self.post_id,
+      'post_title': post.title if post else ''
     }
 
   @staticmethod
@@ -368,6 +372,18 @@ class Like(db.Model):
         print('auto create like %s done' % ( i + 1 ))
       except:
         db.session.rollback()
+
+  def to_json(self):
+    print(Post, self.post_id)
+    post = Post.query.get(self.post_id or -1)
+
+    return {
+      'id': self.id,
+      "author_id": self.author_id,
+      'post_id': self.post_id,
+      'post_title': post.title if post else '',
+      "timestamp": time.mktime(self.timestamp.timetuple())
+    }
 
 class Message(db.Model):
   __tablename__ = 'messages'

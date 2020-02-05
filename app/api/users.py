@@ -191,6 +191,26 @@ def get_user_info(user_id):
     return not_found('获取不到用户信息')
   return jsonify(user.to_json())
 
+@api.route('/get-user-detail/<user_id>')
+def get_user_detail(user_id):
+  user = User.query.get(user_id)
+  if not user:
+    return not_found('获取不到用户信息')
+  info = user.to_json()
+  if g.current_user and (g.current_user == user or g.current_user.can(Permission.ADMIN)):
+    comments = user.comments
+    messages = user.messages
+  else:
+    comments = user.comments.filter_by(hide = False)
+    messages = user.messages.filter_by(hide = False)
+  comments = list(map(lambda c: c.to_json(), comments.all()))
+  messages = list(map(lambda m: m.to_json(), messages.all()))
+  likes = list(map(lambda l: l.to_json(), user.likes.all()))
+  info['comments'] = comments
+  info['messages'] = messages
+  info['likes'] = likes
+  return jsonify(info)
+
 @api.route('/get-self/')
 @login_required
 def get_self_info():
@@ -199,7 +219,7 @@ def get_self_info():
   return jsonify(g.current_user.get_detail())
 
 @api.route('/check-admin/')
-def checkAdmin():
+def check_admin():
   return jsonify({ 'admin': bool(g.current_user and g.current_user.can(Permission.ADMIN))})
 
 @api.route('/get-user-info/')
@@ -219,3 +239,26 @@ def get_admin_info():
   # json['message_count'] = Message.query.filter_by(hide = False).count()
 
   return jsonify(json)
+
+@api.route('/set-email/', methods=["POST"])
+def set_email():
+  if not g.current_user:
+    return unauthorized('请登录后再进行操作', True)
+  user_id = request.json.get('user_id')
+  if not g.current_user.is_administrator() and g.current_user.id != user_id:
+    return forbidden('非法操作', True)
+  email = request.json.get('email')
+  if not email:
+    return bad_request('请填写正确的邮件地址', True)
+  user = User.query.get(user_id)
+  if not user:
+    return bad_request('未找到用户信息', True)
+  user.email = email
+  try:
+    db.session.add(user)
+    db.session.commit()
+  except Exception as e:
+    db.session.rollback()
+    response = server_error('设置邮箱失败，请重试', True)
+    return response
+  return jsonify({ 'message': '设置邮箱成功', "notify": True })
