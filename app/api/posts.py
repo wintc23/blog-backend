@@ -8,6 +8,7 @@ from .decorators import *
 from sqlalchemy import or_
 from ..backup import git_backup
 from json import dumps
+from ..email import send_email
 
 @api.route('/get-post-type/')
 def get_post_types():
@@ -209,21 +210,30 @@ def get_about_me():
 @api.route('/like-post/<post_id>')
 @login_required
 def like_post(post_id):
-  if not post_id:
-    return not_found('未找到文章')
-  post = Post.query.get(post_id)
+  if not g.current_user:
+    return unauthorized('请先登录', True)
+  post = Post.query.get(post_id) if post_id else None
   if not post:
-    return not_found('找不到文章')
+    return not_found('找不到文章', True)
   like = post.likes.filter_by(author = g.current_user).first()
-  if like:
-    return bad_request('您赞过该文章了')
-  like = Like(post_id = post_id, author = g.current_user)
-  db.session.add(like)
-  json = { 'likes': post.likes.count() }
-  json['like'] = False
-  if g.current_user:
-    if post.likes.filter_by(author = g.current_user).first():
-      json['like'] = True
+  if not like:
+    like = Like(post_id = post_id, author = g.current_user)
+    db.session.add(like)
+    db.session.commit()
+    json = { 'likes': post.likes.count() }
+    json['like'] = True
+    reciver = current_app.config['FLASK_ADMIN']
+    domain = current_app.config["DOMAIN"]
+    url = '{}/article/{}'.format(domain, post_id)
+    print(url, '~~~~~~~~~~~~')
+    send_email(reciver,
+      '文章点赞',
+      mail_type = 4,
+      user = g.current_user,
+      post = post,
+      url = url)
+  else:
+    json = { 'likes': post.likes.count(), 'like': True, notify: True, 'message': '您已赞过此文章了' }
   return jsonify(json)
 
 @api.route('/cancel-like-post/<post_id>')

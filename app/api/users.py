@@ -89,7 +89,7 @@ def github_login(code):
       db.session.add(user)
       db.session.commit()
       reciver = current_app.config['FLASK_ADMIN']
-      send_email(reciver, '用户注册', mail_type=1, username=info['login'])
+      send_email(reciver, '用户注册', mail_type = 1, username = info['login'])
     except Exception as e:
       db.session.rollback()
       response = jsonify({ 'error': 'create user error', 'message': '创建用户失败，请重新登录' })

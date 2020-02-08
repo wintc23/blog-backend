@@ -1,5 +1,6 @@
 git add .
 git commit -m publish
+git pull origin master
 git push
 ssh root@wintc.top << autoscript
 cd ~

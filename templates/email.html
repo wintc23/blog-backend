@@ -1,11 +1,59 @@
-{% if mail_type == 1 %}
-  {{ username }} 通过github登录了博客。
-{% elif mail_type == 2 %}
-  {{ username }} 通过QQ登录了博客。
-{% elif mail_type == 3 %}
-  {{ username }} 评论了文章《{{ title }}》: {{ content }}
-  点击查看：<a href = {{ url }}></a>。
-{% elif mail_type == 4 %}
-  <span>木马tc<span>回复了您在其网站的留言: {{ content }}。
-  点击查看：<a href = {{ url }}></a>。
-{% endif %}
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>木马tc个人博客</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type="text/css">
+      .username {
+        color: #FFA710;
+      }
+    </style>
+  </head>
+
+  <body>
+  {% if mail_type == 1 %}
+  <div>
+    <span class="username">{{ username }}</span> 通过github登录了博客。
+  </div>
+  {% elif mail_type == 2 %}
+  <div>
+    <span class="username">{{ username }}</span> 通过QQ登录了博客。
+  </div>
+  {% elif mail_type == 3 %}
+  <div>
+    <span class="username">{{ s.username }}</span> 评论了文章<a href="{{ url }}">《{{ post.title }}》</a>: {{ content }}
+  </div>
+  {% elif mail_type == 4 %}
+  <div>
+    <span class="username">{{ user.username }}</span>赞了文章<a href="{{ url }}">《{{ post.title }}》</a>。
+  </div>
+  {% elif mail_type == 5 %}
+  <div>
+    <span class="username">{{ s.username }}</span> 回复了您的评论。
+  </div>
+  <div>
+    回复内容：{{ content }}
+  </div>
+  <div>
+    文章地址：<a href="{{ url }}">《{{ post.title }}》</a>。
+  </div>
+  {% elif mail_type == 6 %}
+  <div>
+    <span class="username">{{ user.username }}</span>在留言板留言：
+    <a href= {{ url }}>{{ content }}</a>
+  </div>
+  {% elif mail_type == 7 %}
+  <div>
+    <span class="username">{{ user.username }}</span>回复了您的留言：
+    <a href= {{ url }}>{{ content }}</a>
+  </div>
+  {% elif mail_type == 8 %}
+  {% endif %}
+  <div style="margin-top: 20px">
+    欢迎访问我的博客：<a href="http://wintc.top">木马tc个人博客</a>
+  </div>
+  </body>
+</html>
+

@@ -1,10 +1,11 @@
 from flask import request, current_app, jsonify, g
 from .. import db
 from . import api
-from ..models import Post, Comment, Permission
+from ..models import Post, Comment, Permission, User
 from .errors import *
 from .decorators import login_required, permission_required
 from sqlalchemy import or_
+from ..email import send_email
 
 @api.route('/add-comment/', methods = ['POST'])
 @login_required
@@ -38,6 +39,30 @@ def add_comment():
   else:
     hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
     comments = post.comments.filter(hideCondition).all()
+  domain = current_app.config["DOMAIN"]
+  url = '{}/article/{}'.format(domain, post_id)
+  # 给管理员推送邮件
+  reciver = current_app.config['FLASK_ADMIN']
+  send_email(reciver,
+    '发表评论',
+    mail_type = 3,
+    s = g.current_user,
+    url = url,
+    post = post,
+    content = body)
+  # 给被回复者推送邮件
+  if "response" in params:
+    user_id = params['response'].author_id
+    user = User.query.get(user_id)
+    if user and user != g.current_user and user.email:
+      send_email(user.email,
+        '评论回复',
+        mail_type = 5,
+        s = g.current_user,
+        url = url,
+        post = post,
+        content = body)
+
   comments = list(map(lambda comment: comment.to_json(), comments))
   return jsonify({ "comment_times": len(comments), 'comments': comments })
 

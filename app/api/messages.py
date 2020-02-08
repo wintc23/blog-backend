@@ -2,10 +2,11 @@ from flask import request, jsonify, g, current_app
 
 from . import api
 from .errors import *
-from ..models import Message, Permission
+from ..models import Message, Permission, User
 from .. import db
 from .decorators import login_required, permission_required
 from sqlalchemy import or_
+from ..email import send_email
 
 @api.route('/get-messages/', methods=["POST"])
 def get_messages():
@@ -36,6 +37,22 @@ def get_messages():
     'per_page': per_page
   })
 
+@api.route('/get-message-detail/<msg_id>')
+def get_message_detail(msg_id):
+  msg = Message.query.get(msg_id)
+  if not msg:
+    return not_found('没有找到该留言', True)
+  show = True
+  if msg.hide:
+    show = False
+    if g.current_user:
+      show = g.current_user.is_administrator() or g.current_user.id == msg.author_id
+  if not show:
+    return not_found('没有找到该留言', True)
+  lst = [msg] + msg.comments.all()
+  msg_list = list(map(lambda msg: msg.to_json(), lst))
+  return jsonify({ 'list': msg_list })
+
 @api.route('/add-message/', methods = ['POST'])
 @login_required
 def add_message():
@@ -46,17 +63,41 @@ def add_message():
   params['body'] = body
   params['author'] = g.current_user
   response_id = request.json.get('response_id', '')
-  if (response_id):
+  response = None
+  if response_id:
     response = Message.query.get(response_id)
-    if (response):
+    if response:
       params['response_id'] = response_id
       params['root_response_id'] = response.root_response_id or response_id
+
   params['hide'] = True
   if g.current_user and g.current_user.can(Permission.ADMIN):
     params['hide'] = False
   msg = Message(**params)
   db.session.add(msg)
   db.session.commit()
+
+  # 给管理员发送邮件
+  domain = current_app.config["DOMAIN"]
+  url = '{}/message/{}'.format(domain, params.get('root_response_id', '') or msg.id)
+  reciver = current_app.config['FLASK_ADMIN']
+  send_email(reciver,
+    '新增留言',
+    mail_type = 6,
+    url = url,
+    user = g.current_user,
+    content = body)
+  # 给被回复者推送邮件
+  if response:
+    user_id = response.author_id
+    user = User.query.get(user_id)
+    if user and user != g.current_user and user.email:
+      send_email(user.email,
+      '留言回复',
+      mail_type = 7,
+      url = url,
+      user = g.current_user,
+      content = body)
   return jsonify(msg.to_json())
 
 @api.route('/get-hide-messages/', methods = ['POST'])

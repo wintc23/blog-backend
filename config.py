@@ -31,6 +31,7 @@ class DevelopmentConfig(Config):
   QI_NIU_BUCKET=os.environ.get('DEV_QI_NIU_BUCKET')
   QI_NIU_LINK_URL=os.environ.get('DEV_QI_NIU_LINK_URL')
   GIT_BACKUP_DIR = os.environ.get('DEV_GIT_BACKUP_DIR')
+  DOMAIN=os.environ.get('DEV_DOMAIN')
 
 class TestingConfig(Config):
   TESTING = True
@@ -38,6 +39,7 @@ class TestingConfig(Config):
   QI_NIU_BUCKET=os.environ.get('DEV_QI_NIU_BUCKET')
   QI_NIU_LINK_URL=os.environ.get('DEV_QI_NIU_LINK_URL')
   GIT_BACKUP_DIR = os.environ.get('DEV_GIT_BACKUP_DIR')
+  DOMAIN=os.environ.get('DEV_DOMAIN')
 
 class ProductionConfig(Config):
   DEBUG = True
@@ -45,6 +47,7 @@ class ProductionConfig(Config):
   QI_NIU_BUCKET=os.environ.get('QI_NIU_BUCKET')
   QI_NIU_LINK_URL=os.environ.get('QI_NIU_LINK_URL')
   GIT_BACKUP_DIR = os.environ.get('GIT_BACKUP_DIR')
+  DOMAIN=os.environ.get('DOMAIN')
 
 config = {
   'development': DevelopmentConfig,
