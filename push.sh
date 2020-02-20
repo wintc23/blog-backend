@@ -13,6 +13,6 @@ pip install -r requirement.txt
 python main.py db upgrade
 pm2 stop blog-server
 pm2 delete blog-server
-pm2 start python --name blog-server -- main.py runserver --host 0.0.0.0
+pm2 start python --name blog-server -- main.py runserver --host 0.0.0.0 --threaded
 autoscript
 echo 'done'
