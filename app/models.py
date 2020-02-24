@@ -148,7 +148,7 @@ class User(db.Model):
       'about_me': self.about_me,
       'admin': self.is_administrator(),
     }
-  
+
 
 class PostType(db.Model):
   __tablename__ = 'post_type'
@@ -465,3 +465,32 @@ class Topic(db.Model):
       'post_count': self.posts.count()
     }
 
+class FriendLink(db.Model):
+  __tablename__ = 'friend_link'
+  id = db.Column(db.Integer, primary_key = True)
+  title = db.Column(db.String(64))
+  link = db.Column(db.String(64))
+  motto = db.Column(db.Text)
+  logo = db.Column(db.Text(65535))
+  hide = db.Column(db.Boolean, default = True)
+  timestamp = db.Column(db.DateTime, default = datetime.utcnow)
+  author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'title': self.title,
+      'link': self.link,
+      'motto': self.motto,
+      'logo': self.logo,
+      'hide': self.hide,
+      'timestamp': self.timestamp,
+      'author_id': self.author_id
+    }
+
+  def to_abstract(self):
+    return {
+      'id': self.id,
+      'title': self.title,
+      'link': self.link
+    }

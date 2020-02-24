@@ -105,6 +105,8 @@ def get_post(post_id, post_type_id = None):
   post = query.filter_by(id = post_id).first()
   if not post:
     return not_found('查询不到该文章', True)
+  if not isAdmin:
+    post.add_read()
   json = post.to_json()
   post_type = post.type
   condition = {}
@@ -134,16 +136,13 @@ def get_post(post_id, post_type_id = None):
     hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
     comments = post.comments.filter(hideCondition).all()
   tags = post.tags.all()
-
-  if not isAdmin:
-    post.add_read()
-    db.session.add(post)
-  
   json['before'] = before
   json['after'] = after
   json['comment_times'] = len(comments)
   json['comments'] = list(map(lambda comment: comment.to_json(), comments))
   json['tags'] =  list(map(lambda tag: tag.id, tags))
+
+  db.session.add(post)
   return jsonify(json)
 
 @api.route('/add-post/<post_type_id>')

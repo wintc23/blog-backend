@@ -11,7 +11,7 @@ from . import api
 from .errors import *
 from .. import db
 from ..models import User, Permission, Tag, Post, Role, PostType, Comment, Message, Like
-from .decorators import login_required
+from .decorators import login_required, permission_required
 from sqlalchemy import and_
 from ..email import send_email
 from ..qiniu import get_token
@@ -262,3 +262,11 @@ def set_email():
     response = server_error('设置邮箱失败，请重试', True)
     return response
   return jsonify({ 'message': '设置邮箱成功', "notify": True })
+
+@api.route('/search-user/', methods = ["POST"])
+@permission_required(Permission.ADMIN)
+def search_user():
+  keyword = request.json.get('keyword', '')
+  user_list = User.query.filter(User.username.like('%{}%'.format(keyword))).all()
+  user_list = list(map(lambda x: x.to_json(), user_list))
+  return jsonify({ 'list': user_list })
