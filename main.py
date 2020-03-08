@@ -6,6 +6,7 @@ from flask_migrate import Migrate, MigrateCommand
 from app import create_app, db
 from flask_cors import *
 from app.email import send_email
+from app.baidu import auto_push
 from app.api.users import save_file, save_all_user_avatar
 
 app = create_app(os.getenv('FLASK_CONFIG') or 'default')
@@ -27,6 +28,7 @@ def make_shell_context():
     Topic = Topic,
     send_email = send_email,
     save_file = save_file,
+    auto_push = auto_push,
     save_all_user_avatar = save_all_user_avatar,
     db = db)
 

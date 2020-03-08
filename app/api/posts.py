@@ -7,6 +7,7 @@ from .errors import *
 from .decorators import *
 from sqlalchemy import or_
 from ..backup import git_backup
+from ..baidu import auto_push
 from json import dumps
 from ..email import send_email
 
@@ -161,6 +162,18 @@ def save_post():
   if not post_id:
     return not_found('查找不到文章', True)
   post = Post.query.get(post_id)
+
+  baidu_push_info = { 0: '', 1: 'del', 2: 'urls', 3: 'update' }
+  baidu_push_key = 0 | (0 if post.hide else 1) | (0 if request.json['hide'] else 2)
+
+  if post.hide:
+    if not request.json['hide']:
+      baidu_push_type = 'urls'
+  else:
+    if request.json['hide']:
+      baidu_push_type = 'del'
+    else:
+      baidu_push_type = 'del'
   if not post:
     return not_found('查找不到文章', True)
   # 基本属性
@@ -180,9 +193,14 @@ def save_post():
   db.session.add(post)
   # 异步备份和推送百度
   git_backup("posts/{0}.json".format(post_id), dumps(post.to_json()))
+
+  push_state = auto_push(baidu_push_info[baidu_push_key], post.id)
+  print(push_state)
+
   return jsonify({
     'message': '保存成功',
-    'notify': True
+    'notify': True,
+    'push_state': push_state
   })
 
 @api.route('/delete-post/<post_id>')
@@ -192,9 +210,11 @@ def delete_post(post_id):
   if not post:
     return not_found('查找不到文章', True)
   db.session.delete(post)
+  push_state = auto_push('del', post.id)
   return jsonify({
     'message': '删除成功',
-    'notify': True
+    'notify': True,
+    'push_state': push_state
   })
 
 @api.route('/get-about-me/')

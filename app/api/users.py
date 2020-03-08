@@ -22,7 +22,6 @@ def save_file(url):
     req = urllib.request.Request(url)
     res = urllib.request.urlopen(req)
     filename = str(uuid.uuid4()).replace('-', '')
-    print('filename', filename)
     token = get_token(filename)
     ret, _ = put_data(token, filename, data = res.read())
     return ret.get('key')
@@ -40,13 +39,10 @@ def save_all_user_avatar(base):
     else:
       user.avatar = save_file(base + '/get-file/?path=avatar&filename=' + user.avatar)
     db.session.add(user)
-    print(user.avatar, '~~~~~~~~~~~~~~~~')
   try:
     db.session.commit()
   except Exception as e:
-    print(e, '~~~~~~~')
     db.session.rollback()
-  print('done')
 
 @api.route('/github-login/<code>')
 def github_login(code):
