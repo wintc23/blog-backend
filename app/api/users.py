@@ -245,7 +245,9 @@ def set_email():
     return forbidden('非法操作', True)
   email = request.json.get('email')
   if not email:
-    return bad_request('请填写正确的邮件地址', True)
+    return bad_request('请填写正确的邮箱', True)
+  if User.query.filter_by(email=email).first():
+    return bad_request('该邮箱已被占用，如果您是该邮箱所有者，请联系管理员', True)
   user = User.query.get(user_id)
   if not user:
     return bad_request('未找到用户信息', True)
@@ -254,6 +256,7 @@ def set_email():
     db.session.add(user)
     db.session.commit()
   except Exception as e:
+    print(e)
     db.session.rollback()
     response = server_error('设置邮箱失败，请重试', True)
     return response
