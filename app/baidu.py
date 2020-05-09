@@ -14,7 +14,7 @@ def auto_push(push_type, post_id):
     msg = 'auto push fail, env:{}, token: {} type: {}'.format(current_app.config['ENV'], bool(token), push_type)
     return { 'error_msg': msg }
   target = 'http://data.zz.baidu.com/{}?site=wintc.top&token={}'.format(push_type, token)
-  data = 'http://wintc.top/article/{}'.format(post_id)
+  data = 'https://wintc.top/article/{}'.format(post_id)
   res = os.popen('''
   curl -H 'Content-Type:text/plain' --data-raw {} "{}"
   '''.format(data, target)).readlines()
