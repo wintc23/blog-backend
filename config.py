@@ -12,8 +12,6 @@ class Config:
   MAIL_SENDER = os.environ.get('MAIL_SENDER')
   MAIL_SUBJECT_PREFIX = os.environ.get('MAIL_SUBJECT_PREFIX')
   FLASK_ADMIN = os.environ.get('FLASK_ADMIN')
-  FLASK_GITHUB_SECRET = os.environ.get('FLASK_GITHUB_SECRET')
-  FLASK_GITHUB_CLIENT_ID = os.environ.get('FLASK_GITHUB_CLIENT_ID')
   FLASK_QQ_SECRET = os.environ.get('FLASK_QQ_SECRET')
   FLASK_QQ_CLIENT_ID = os.environ.get('FLASK_QQ_CLIENT_ID')
   FLASK_POSTS_PER_PAGE = int(os.environ.get('FLASK_POSTS_PER_PAGE'))
@@ -34,6 +32,8 @@ class DevelopmentConfig(Config):
   QI_NIU_LINK_URL = os.environ.get('DEV_QI_NIU_LINK_URL')
   GIT_BACKUP_DIR = os.environ.get('DEV_GIT_BACKUP_DIR')
   DOMAIN = os.environ.get('DEV_DOMAIN')
+  FLASK_GITHUB_SECRET = os.environ.get('DEV_FLASK_GITHUB_SECRET')
+  FLASK_GITHUB_CLIENT_ID = os.environ.get('DEV_FLASK_GITHUB_CLIENT_ID')
 
 class TestingConfig(Config):
   TESTING = True
@@ -42,6 +42,8 @@ class TestingConfig(Config):
   QI_NIU_LINK_URL = os.environ.get('DEV_QI_NIU_LINK_URL')
   GIT_BACKUP_DIR = os.environ.get('DEV_GIT_BACKUP_DIR')
   DOMAIN = os.environ.get('DEV_DOMAIN')
+  FLASK_GITHUB_SECRET = os.environ.get('DEV_FLASK_GITHUB_SECRET')
+  FLASK_GITHUB_CLIENT_ID = os.environ.get('DEV_FLASK_GITHUB_CLIENT_ID')
 
 class ProductionConfig(Config):
   DEBUG = True
@@ -50,6 +52,8 @@ class ProductionConfig(Config):
   QI_NIU_LINK_URL = os.environ.get('QI_NIU_LINK_URL')
   GIT_BACKUP_DIR = os.environ.get('GIT_BACKUP_DIR')
   DOMAIN = os.environ.get('DOMAIN')
+  FLASK_GITHUB_SECRET = os.environ.get('FLASK_GITHUB_SECRET')
+  FLASK_GITHUB_CLIENT_ID = os.environ.get('FLASK_GITHUB_CLIENT_ID')
 
 config = {
   'development': DevelopmentConfig,

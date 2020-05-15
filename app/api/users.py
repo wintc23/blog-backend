@@ -5,6 +5,7 @@ import uuid
 import os
 import sys
 import re
+import ssl
 
 from flask import g, jsonify, request, current_app
 from . import api
@@ -17,6 +18,8 @@ from ..email import send_email
 from ..qiniu import get_token
 from qiniu import put_data
 
+ssl._create_default_https_context = ssl._create_unverified_context
+
 def save_file(url):
   try:
     req = urllib.request.Request(url)
@@ -24,8 +27,10 @@ def save_file(url):
     filename = str(uuid.uuid4()).replace('-', '')
     token = get_token(filename)
     ret, _ = put_data(token, filename, data = res.read())
+    print(ret)
     return ret.get('key')
   except Exception as e:
+    print(e, '~~~~~~~~')
     return ''
 
 def save_all_user_avatar(base):
@@ -57,7 +62,7 @@ def github_login(code):
   params = urllib.parse.urlencode(data).encode('utf-8')
   headers = {
     'User-Agent': 'Mozilla/4.0 (compatible; MSIE 5.5; Windows NT)',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
   }
   req = urllib.request.Request(url, params, headers)
   html = urllib.request.urlopen(req).read().decode('utf-8')
@@ -66,13 +71,18 @@ def github_login(code):
   if access_data.get('error', ''):
     return bad_request('链接已失效，请重新登录', True)
   access_token = access_data['access_token']
-  req2 = urllib.request.Request(url='https://api.github.com/user?access_token='+access_token, headers=headers)
+  headers['Authorization'] = 'token ' + access_data['access_token']
+  print('access_token', access_data['access_token'])
+  req2 = urllib.request.Request(url='https://api.github.com/user', headers=headers)
   html2 = urllib.request.urlopen(req2).read().decode('utf-8')
   info = json.loads(html2)
+  print('userinfo', info)
   id_string = 'github' + str(info['id'])
   user = User.query.filter_by(id_string=id_string).first()
   if not user:
-    avatar = save_file(avatar_url)
+    avatar = save_file(info['avatar_url'])
+    if not avatar:
+      return server_error('获取github用户信息失败', True)
     register_info = {
       'username': info['login'],
       'id_string': id_string,
@@ -158,6 +168,8 @@ def qq_login():
       avatar = save_file(user_info["figureurl_qq_2"])
     if not avatar:
       avatar = save_file(user_info['figureurl_qq_1'])
+    if not avatar:
+      return server_error('获取QQ用户信息失败', True)
     register_info = {
       'username': user_info['nickname'],
       'id_string': 'qq' + info['openid'],
