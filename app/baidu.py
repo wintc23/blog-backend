@@ -3,7 +3,6 @@
 import os
 
 from flask import current_app
-from threading import Thread
 
 def auto_push(push_type, post_id):
   if not push_type:

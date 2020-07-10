@@ -10,6 +10,7 @@ from ..backup import git_backup
 from ..baidu import auto_push
 from json import dumps
 from ..email import send_email
+from ..algolia import save_objects, delete_objects
 
 @api.route('/get-post-type/')
 def get_post_types():
@@ -163,23 +164,20 @@ def save_post():
     return not_found('查找不到文章', True)
   post = Post.query.get(post_id)
 
-  baidu_push_info = { 0: '', 1: 'del', 2: 'urls', 3: 'update' }
-  baidu_push_key = 0 | (0 if post.hide else 1) | (0 if request.json['hide'] else 2)
+  action_type = 0 | (0 if post.hide else 1) | (0 if request.json['hide'] else 2)
 
-  if post.hide:
-    if not request.json['hide']:
-      baidu_push_type = 'urls'
-  else:
-    if request.json['hide']:
-      baidu_push_type = 'del'
-    else:
-      baidu_push_type = 'del'
   if not post:
     return not_found('查找不到文章', True)
   # 基本属性
   for key in ['title', 'hide', 'abstract', 'hide', 'body_html', 'type_id', 'abstract_image', 'topic_id', 'keywords', 'description']:
     setattr(post, key, request.json[key])
   print(request.json)
+  
+  if post.hide:
+    delete_objects([post.id], 'post')
+  else:
+    save_objects([post.to_json()], 'post')
+  
   # 标签
   for tag in post.tags.all():
     if not tag.id in request.json['tags']:
@@ -191,11 +189,20 @@ def save_post():
     if tag:
       post.tags.append(tag)
   db.session.add(post)
-  # 异步备份和推送百度
+  # 异步备份
   git_backup("posts/{0}.json".format(post_id), dumps(post.to_json()))
 
-  push_state = auto_push(baidu_push_info[baidu_push_key], post.id)
+  # 百度推送
+  baidu_push_info = { 0: '', 1: 'del', 2: 'urls', 3: 'update' }
+  push_state = auto_push(baidu_push_info[action_type], post.id)
   print(push_state)
+
+  # algolia第三方搜索推送
+  if action_type:
+    if action_type == 1:
+      delete_objects([post.id], 'post')
+    else:
+      save_objects([post.id], 'post')
 
   return jsonify({
     'message': '保存成功',
@@ -211,6 +218,7 @@ def delete_post(post_id):
     return not_found('查找不到文章', True)
   db.session.delete(post)
   push_state = auto_push('del', post.id)
+  delete_objects([post.id], 'post')
   return jsonify({
     'message': '删除成功',
     'notify': True,

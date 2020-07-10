@@ -19,7 +19,9 @@ class Config:
   QI_NIU_ACCESS_KEY = os.environ.get('QI_NIU_ACCESS_KEY')
   QI_NIU_SECRET_KEY = os.environ.get('QI_NIU_SECRET_KEY')
   BAIDU_TOKEN = os.environ.get('BAIDU_TOKEN')
-  ENV = os.getenv('FLASK_CONFIG') or 'default'
+  ENV = os.environ.get('FLASK_CONFIG') or 'default'
+  ALGOLIA_APP_ID = os.environ.get('ALGOLIA_APP_ID')
+  ALGOLIA_ADMIN_API_KEY = os.environ.get('ALGOLIA_ADMIN_API_KEY')
 
   @staticmethod
   def init_app(app):
@@ -34,6 +36,7 @@ class DevelopmentConfig(Config):
   DOMAIN = os.environ.get('DEV_DOMAIN')
   FLASK_GITHUB_SECRET = os.environ.get('DEV_FLASK_GITHUB_SECRET')
   FLASK_GITHUB_CLIENT_ID = os.environ.get('DEV_FLASK_GITHUB_CLIENT_ID')
+  ALGOLIA_INDEX = os.environ.get('DEV_ALGOLIA_INDEX')
 
 class TestingConfig(Config):
   TESTING = True
@@ -44,6 +47,7 @@ class TestingConfig(Config):
   DOMAIN = os.environ.get('DEV_DOMAIN')
   FLASK_GITHUB_SECRET = os.environ.get('DEV_FLASK_GITHUB_SECRET')
   FLASK_GITHUB_CLIENT_ID = os.environ.get('DEV_FLASK_GITHUB_CLIENT_ID')
+  ALGOLIA_INDEX = os.environ.get('DEV_ALGOLIA_INDEX')
 
 class ProductionConfig(Config):
   DEBUG = True
@@ -54,6 +58,7 @@ class ProductionConfig(Config):
   DOMAIN = os.environ.get('DOMAIN')
   FLASK_GITHUB_SECRET = os.environ.get('FLASK_GITHUB_SECRET')
   FLASK_GITHUB_CLIENT_ID = os.environ.get('FLASK_GITHUB_CLIENT_ID')
+  ALGOLIA_INDEX = os.environ.get('ALGOLIA_INDEX')
 
 config = {
   'development': DevelopmentConfig,

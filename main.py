@@ -8,6 +8,7 @@ from flask_cors import *
 from app.email import send_email
 from app.baidu import auto_push
 from app.api.users import save_file, save_all_user_avatar
+from app.algolia import save_all_post, delete_all_post
 
 app = create_app(os.getenv('FLASK_CONFIG') or 'default')
 CORS(app, supports_credentials=True)
@@ -29,6 +30,8 @@ def make_shell_context():
     send_email = send_email,
     save_file = save_file,
     auto_push = auto_push,
+    save_all_post = save_all_post,
+    delete_all_post = delete_all_post,
     save_all_user_avatar = save_all_user_avatar,
     db = db)
 
