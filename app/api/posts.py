@@ -100,19 +100,19 @@ def get_post(post_id, post_type_id = None):
     post_type = PostType.query.get(post_type_id)
     if post_type:
       query = post_type.posts
-  isAdmin = g.current_user and g.current_user.can(Permission.ADMIN) 
+  is_admin = g.current_user and g.current_user.can(Permission.ADMIN) 
   hide_post_type = PostType.query.filter_by(special = 1).first()
-  if not isAdmin:
+  if not is_admin:
     query = query.filter(Post.type_id != hide_post_type.id)
   post = query.filter_by(id = post_id).first()
   if not post:
     return not_found('查询不到该文章', True)
-  if not isAdmin:
+  if not is_admin:
     post.add_read()
   json = post.to_json()
   post_type = post.type
   condition = {}
-  if isAdmin:
+  if is_admin:
     post_list = query.all()
   else:
     if post.is_about_me():
@@ -187,17 +187,19 @@ def save_post():
   # 异步备份
   git_backup("posts/{0}.json".format(post_id), dumps(post.to_json()))
 
-  # 百度推送
-  baidu_push_info = { 0: '', 1: 'del', 2: 'urls', 3: 'update' }
-  push_state = auto_push(baidu_push_info[action_type], post.id)
-  print(push_state)
+  if not post.type.special:
+    # 百度推送
+    baidu_push_info = { 0: '', 1: 'del', 2: 'urls', 3: 'update' }
+    push_state = auto_push(baidu_push_info[action_type], post.id)
+    print(push_state)
 
-  # algolia第三方搜索推送
-  if action_type:
-    if action_type == 1:
-      delete_objects([post.id], 'post')
-    else:
-      save_objects([post.to_json()], 'post')
+    # algolia第三方搜索推送
+    if action_type:
+      if action_type == 1:
+        delete_objects([post.id], 'post')
+      else:
+        save_objects([post.to_json()], 'post')
+
 
   return jsonify({
     'message': '保存成功',

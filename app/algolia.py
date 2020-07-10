@@ -25,14 +25,15 @@ def delete_objects(id_list, data_type):
   index.delete_objects(id_list)
   
 # 对已存在的数据进行保存
-def save_all_post():
+def save_all_posts():
   post_list = Post.query.filter_by(hide = False).all()
-  data_list = list(map(lambda x: x.to_json(), post_list))
+  post_list = filter(lambda p: not p.type.special, post_list)
+  data_list = list(map(lambda p: p.to_json(), post_list))
   save_objects(data_list, 'post')
   print('save done')
 
 # 对已存在数据删除
-def delete_all_post():
+def delete_all_posts():
   post_list = Post.query.all()
   id_list = list(map(lambda x: x.id, post_list))
   delete_objects(id_list, 'post')
