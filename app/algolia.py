@@ -12,6 +12,7 @@ def get_index_context():
   return index
 
 def save_objects(data_list, data_type):
+  print('save_objects', data_list)
   for i in range(len(data_list)):
     data_list[i]['objectID'] = '%s_%s' % (data_type, data_list[i]['id'])
   index = get_index_context()

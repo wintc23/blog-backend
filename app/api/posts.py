@@ -173,11 +173,6 @@ def save_post():
     setattr(post, key, request.json[key])
   print(request.json)
   
-  if post.hide:
-    delete_objects([post.id], 'post')
-  else:
-    save_objects([post.to_json()], 'post')
-  
   # 标签
   for tag in post.tags.all():
     if not tag.id in request.json['tags']:
@@ -202,7 +197,7 @@ def save_post():
     if action_type == 1:
       delete_objects([post.id], 'post')
     else:
-      save_objects([post.id], 'post')
+      save_objects([post.to_json()], 'post')
 
   return jsonify({
     'message': '保存成功',
