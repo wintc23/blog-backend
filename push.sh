@@ -1,3 +1,4 @@
+pip freeze > requirement.txt 
 git add .
 git commit -m publish
 git pull origin master
@@ -9,6 +10,7 @@ cd /home/lushg/blog-backend
 source venv/bin/activate
 git clean -df
 git pull origin master
+pip install --upgrade pip command
 pip install -r requirement.txt
 python main.py db upgrade
 pm2 stop blog-server
