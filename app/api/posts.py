@@ -187,6 +187,7 @@ def save_post():
   # 异步备份
   git_backup("posts/{0}.json".format(post_id), dumps(post.to_json()))
 
+  push_state = False
   if not post.type.special:
     # 百度推送
     baidu_push_info = { 0: '', 1: 'del', 2: 'urls', 3: 'update' }
