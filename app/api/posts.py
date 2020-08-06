@@ -284,6 +284,6 @@ def get_top_ten():
   post_type = PostType.query.filter_by(default = True).first()
   if not post_type:
     return server_error('服务器查询数据库失败')
-  pagination = post_type.posts.order_by(Post.read_times.desc()).paginate(1, per_page = 10, error_out = False)
+  pagination = post_type.posts.order_by(Post.read_times.desc()).paginate(1, per_page = 5, error_out = False)
   post_list = list(map(lambda post: post.abstract_json(), pagination.items))
   return jsonify({ 'list': post_list })
