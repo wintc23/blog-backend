@@ -5,7 +5,7 @@ from . import api
 from ..models import PostType, Post, Permission, Like, Comment, Tag
 from .errors import *
 from .decorators import *
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from ..backup import git_backup
 from ..baidu import auto_push
 from json import dumps
@@ -22,7 +22,8 @@ def get_post_types():
 
 @api.route('/get-visible-posts/')
 def get_visible_posts():
-  post_list = Post.query.filter_by(hide = False).all()
+  hide_post_type = PostType.query.filter_by(special = 1).first()
+  post_list = Post.query.filter(and_(Post.hide == False, Post.type_id != hide_post_type.id)).all()
   post_list = list(map(lambda post: post.id, post_list))
   return jsonify({ 'list': post_list })
 
@@ -141,8 +142,8 @@ def get_post(post_id, post_type_id = None):
   if g.current_user and g.current_user.can(Permission.ADMIN):
     comments = post.comments.all()
   else:
-    hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
-    comments = post.comments.filter(hideCondition).all()
+    hide_condition = or_(Comment.hide == False, Comment.author == g.current_user)
+    comments = post.comments.filter(hide_condition).all()
   tags = post.tags.all()
   json['before'] = before
   json['after'] = after
