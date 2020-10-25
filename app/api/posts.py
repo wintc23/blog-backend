@@ -20,6 +20,12 @@ def get_post_types():
     type_list = PostType.query.filter_by(special = 0).all()
   return jsonify({ 'list': list(map(lambda t: t.to_json(), type_list)) })
 
+@api.route('/get-visible-posts/')
+def get_visible_posts():
+  post_list = Post.query.filter_by(hide = False).all()
+  post_list = list(map(lambda post: post.id, post_list))
+  return jsonify({ 'list': post_list })
+
 @api.route('/get-posts/', methods=["POST"])
 def get_post_list():
   page = request.json.get('page', 1)
