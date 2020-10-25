@@ -79,7 +79,7 @@ def add_message():
 
   # 给管理员发送邮件
   domain = current_app.config["DOMAIN"]
-  url = '{}/message/{}'.format(domain, params.get('root_response_id', '') or msg.id)
+  url = '{}/message/{}?newId={}'.format(domain, params.get('root_response_id', '') or msg.id, msg.id)
   reciver = current_app.config['FLASK_ADMIN']
   send_email(reciver,
     '新增留言',

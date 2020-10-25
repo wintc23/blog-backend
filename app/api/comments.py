@@ -40,7 +40,7 @@ def add_comment():
     hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
     comments = post.comments.filter(hideCondition).all()
   domain = current_app.config["DOMAIN"]
-  url = '{}/article/{}'.format(domain, post_id)
+  url = '{}/article/{}?commentId={}'.format(domain, post_id, comment.id)
   # 给管理员推送邮件
   reciver = current_app.config['FLASK_ADMIN']
   send_email(reciver,
