@@ -288,6 +288,7 @@ class Post(db.Model):
       'id': self.id,
       'author_id': self.author.id,
       'title': self.title,
+      'hide': self.hide,
       'timestamp': time.mktime(self.timestamp.timetuple()),
       'abstract': self.abstract,
       'read_times': self.read_times,
