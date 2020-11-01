@@ -1,11 +1,13 @@
 from flask import request, current_app, jsonify, g
 from .. import db
 from . import api
-from ..models import Post, Comment, Permission, User
+from ..models import Post, Comment, Permission, User, Role
 from .errors import *
 from .decorators import login_required, permission_required
 from sqlalchemy import or_
 from ..email import send_email
+from ..defines import NOTIFY
+from ..socket import notify
 
 @api.route('/add-comment/', methods = ['POST'])
 @login_required
@@ -41,27 +43,31 @@ def add_comment():
     comments = post.comments.filter(hideCondition).all()
   domain = current_app.config["DOMAIN"]
   url = '{}/article/{}?commentId={}'.format(domain, post_id, comment.id)
-  # 给管理员推送邮件
+  # 给管理员推送消息、邮件
+  notify_data = {
+    'url': url,
+    'post_title': post.title,
+    'content': body,
+    'username': g.current_user.username
+  }
+  role_list = filter(lambda r : r.has_permission(Permission.ADMIN), Role.query.all())
+  role_list = list(role_list)
+  if role_list:
+    user_list = role_list[0].users.all()
+    if user_list:
+      notify(user_list[0].id, { **notify_data, 'type': NOTIFY["COMMENT"] })
+
   reciver = current_app.config['FLASK_ADMIN']
-  send_email(reciver,
-    '发表评论',
-    mail_type = 3,
-    s = g.current_user,
-    url = url,
-    post = post,
-    content = body)
-  # 给被回复者推送邮件
+  
+  send_email(reciver, '发表评论', mail_type = NOTIFY["COMMENT"], **notify_data)
+  # 给被回复者推送消息、邮件
   if "response" in params:
     user_id = params['response'].author_id
     user = User.query.get(user_id)
-    if user and user != g.current_user and user.email:
-      send_email(user.email,
-        '评论回复',
-        mail_type = 5,
-        s = g.current_user,
-        url = url,
-        post = post,
-        content = body)
+    if user and user != g.current_user:
+      notify_status = notify(user_id, { 'type': NOTIFY["COMMENT_REPLY"], **notify_data })
+      if not notify_status and user.email:
+        send_email(user.email, '评论回复', mail_type = NOTIFY["COMMENT_REPLY"], **notify_data)
 
   comments = list(map(lambda comment: comment.to_json(), comments))
   return jsonify({ "comment_times": len(comments), 'comments': comments })

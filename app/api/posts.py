@@ -11,6 +11,7 @@ from ..baidu import auto_push
 from json import dumps
 from ..email import send_email
 from ..algolia import save_objects, delete_objects
+from ..defines import NOTIFY
 
 @api.route('/get-post-type/')
 def get_post_types():
@@ -260,12 +261,12 @@ def like_post(post_id):
     print(url, '~~~~~~~~~~~~')
     send_email(reciver,
       '文章点赞',
-      mail_type = 4,
+      mail_type = NOTIFY['LIKE'],
       user = g.current_user,
       post = post,
       url = url)
   else:
-    json = { 'likes': post.likes.count(), 'like': True, notify: True, 'message': '您已赞过此文章了' }
+    json = { 'likes': post.likes.count(), 'like': True, 'notify': True, 'message': '您已赞过此文章了' }
   return jsonify(json)
 
 @api.route('/cancel-like-post/<post_id>')

@@ -2,11 +2,13 @@ from flask import request, jsonify, g, current_app
 
 from . import api
 from .errors import *
-from ..models import Message, Permission, User
+from ..models import Message, Permission, User, Role
 from .. import db
 from .decorators import login_required, permission_required
 from sqlalchemy import or_
 from ..email import send_email
+from ..defines import NOTIFY
+from ..socket import notify
 
 @api.route('/get-messages/', methods=["POST"])
 def get_messages():
@@ -14,9 +16,10 @@ def get_messages():
   per_page = current_app.config['FLASK_BBS_PER_PAGE']
   if not page:
     return bad_request('参数错误')
-  hideCondition = Message.hide == False
-  if g.current_user:
-    hideCondition = or_(Message.hide == False, Message.author_id == g.current_user.id)
+  if g.current_user and g.current_user.is_administrator():
+    hideCondition = True
+  else:
+    hideCondition = or_(Message.hide == False, Message.author == g.current_user)
   pagination = Message.query.filter_by(response_id = None).filter(hideCondition).order_by(Message.timestamp.desc()).paginate(
     page,
     per_page = per_page,
@@ -81,23 +84,28 @@ def add_message():
   domain = current_app.config["DOMAIN"]
   url = '{}/message/{}?newId={}'.format(domain, params.get('root_response_id', '') or msg.id, msg.id)
   reciver = current_app.config['FLASK_ADMIN']
-  send_email(reciver,
-    '新增留言',
-    mail_type = 6,
-    url = url,
-    user = g.current_user,
-    content = body)
+  notify_data = {
+    "url": url,
+    'content': body,
+    'username': g.current_user.username
+  }
+
+  role_list = filter(lambda r : r.has_permission(Permission.ADMIN), Role.query.all())
+  role_list = list(role_list)
+  if role_list:
+    user_list = role_list[0].users.all()
+    if user_list:
+      notify(user_list[0].id, { **notify_data, 'type': NOTIFY["MESSAGE"] })
+
+  send_email(reciver, '新增留言', mail_type = NOTIFY['MESSAGE'], **notify_data)
   # 给被回复者推送邮件
   if response:
     user_id = response.author_id
     user = User.query.get(user_id)
-    if user and user != g.current_user and user.email:
-      send_email(user.email,
-      '留言回复',
-      mail_type = 7,
-      url = url,
-      user = g.current_user,
-      content = body)
+    if user and user != g.current_user:
+      notify_status = notify(user_id, { 'type': NOTIFY["MESSAGE_REPLY"], **notify_data })
+      if not notify_status and user.email:
+        send_email(user.email, '留言回复', mail_type = NOTIFY["MESSAGE_REPLY"], **notify_data)
   return jsonify(msg.to_json())
 
 @api.route('/get-hide-messages/', methods = ['POST'])

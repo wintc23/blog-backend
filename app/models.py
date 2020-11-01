@@ -322,7 +322,7 @@ class Comment(db.Model):
       'timestamp': time.mktime(self.timestamp.timetuple()),
       'hide': self.hide,
       'post_id': self.post_id,
-      'post_title': post.title if post else ''
+      'post_title': self.post.title
     }
 
   @staticmethod

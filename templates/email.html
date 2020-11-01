@@ -13,33 +13,33 @@
   </head>
 
   <body>
-  {% if mail_type == 1 %}
+  {% if mail_type == NOTIFY["LOGIN_GITHUB"] %}
   <div>
     <span class="username">{{ username }}</span> 通过github登录了博客。
   </div>
-  {% elif mail_type == 2 %}
+  {% elif mail_type == NOTIFY["LOGIN_QQ"] %}
   <div>
     <span class="username">{{ username }}</span> 通过QQ登录了博客。
   </div>
-  {% elif mail_type == 3 %}
+  {% elif mail_type == NOTIFY["COMMENT"] %}
   <div>
-    <span class="username">{{ s.username }}</span> 评论了文章<a href="{{ url }}">《{{ post.title }}》</a>: {{ content }}
+    <span class="username">{{ username }}</span> 评论了文章<a href="{{ url }}">《{{ post_title }}》</a>: {{ content }}
   </div>
-  {% elif mail_type == 4 %}
+  {% elif mail_type == NOTIFY["LIKE"] %}
   <div>
-    <span class="username">{{ user.username }}</span>赞了文章<a href="{{ url }}">《{{ post.title }}》</a>。
+    <span class="username">{{ user.username }}</span>赞了文章<a href="{{ url }}">《{{ post_title }}》</a>。
   </div>
-  {% elif mail_type == 5 %}
+  {% elif mail_type == NOTIFY["COMMENT_REPLY"] %}
   <div>
-    <span class="username">{{ s.username }}</span> 回复了您在文章<a href="{{ url }}">《{{ post.title }}》</a>的评论：<a href="{{ url }}">查看回复</a>
+    <span class="username">{{ username }}</span> 回复了您在文章<a href="{{ url }}">《{{ post_title }}》</a>的评论：<a href="{{ url }}">查看回复</a>
   </div>
-  {% elif mail_type == 6 %}
+  {% elif mail_type == NOTIFY["MESSAGE"] %}
   <div>
-    <span class="username">{{ user.username }}</span>在留言板留言：<a href="{{ url }}">查看留言</a>
+    <span class="username">{{ username }}</span>在留言板留言：{{ content }}<a href="{{ url }}">查看留言</a>
   </div>
-  {% elif mail_type == 7 %}
+  {% elif mail_type == NOTIFY["MESSAGE_REPLY"] %}
   <div>
-    <span class="username">{{ user.username }}</span>回复了您的留言：<a href= {{ url }}>查看留言回复</a>
+    <span class="username">{{ username }}</span>回复了您的留言：<a href= {{ url }}>查看留言回复</a>
   </div>
   {% elif mail_type == 8 %}
   {% endif %}

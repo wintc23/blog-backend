@@ -1,6 +1,6 @@
 import os
 from app.models import User, Role, Post, Like, Comment, PostType, Message, Tag, Topic
-
+from app.socket import socketio
 from flask_script import Manager, Shell
 from flask_migrate import Migrate, MigrateCommand
 from app import create_app, db
@@ -12,6 +12,7 @@ from app.algolia import save_all_posts, delete_all_posts
 
 app = create_app(os.getenv('FLASK_CONFIG') or 'default')
 CORS(app, supports_credentials=True)
+
 manager = Manager(app)
 migrate = Migrate(app, db)
 
@@ -37,6 +38,7 @@ def make_shell_context():
 
 manager.add_command('shell', Shell(make_context = make_shell_context))
 manager.add_command('db', MigrateCommand)
+manager.add_command('run', socketio.run(app=app, host='0.0.0.0', port=5000))
 
 @manager.command
 def init_db():

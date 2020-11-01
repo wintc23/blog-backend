@@ -17,6 +17,7 @@ from sqlalchemy import and_
 from ..email import send_email
 from ..qiniu import get_token
 from qiniu import put_data
+from ..defines import NOTIFY
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -95,7 +96,7 @@ def github_login(code):
       db.session.add(user)
       db.session.commit()
       reciver = current_app.config['FLASK_ADMIN']
-      send_email(reciver, '用户注册', mail_type = 1, username = info['login'])
+      send_email(reciver, '用户注册', mail_type = NOTIFY["LOGIN_GITHUB"], username = info['login'])
     except Exception as e:
       db.session.rollback()
       response = jsonify({ 'error': 'create user error', 'message': '创建用户失败，请重新登录' })
@@ -182,7 +183,7 @@ def qq_login():
       db.session.commit()
 
       reciver = current_app.config['FLASK_ADMIN']
-      send_email(reciver, '用户注册', mail_type = 2, username = user_info['nickname'])
+      send_email(reciver, '用户注册', mail_type = NOTIFY["LOGIN_QQ"], username = user_info['nickname'])
     except Exception as e:
       print(e)
       db.session.rollback()

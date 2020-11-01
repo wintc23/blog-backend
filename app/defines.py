@@ -1,0 +1,9 @@
+NOTIFY = {
+  "LOGIN_GITHUB": 1,
+  "LOGIN_QQ": 2,
+  "COMMENT": 3,
+  "LIKE": 4,
+  "COMMENT_REPLY": 5,
+  "MESSAGE": 6,
+  "MESSAGE_REPLY": 7
+}
