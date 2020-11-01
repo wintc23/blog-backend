@@ -1,3 +1,4 @@
+source venv/bin/activate
 pip freeze > requirement.txt 
 git add .
 git commit -m publish

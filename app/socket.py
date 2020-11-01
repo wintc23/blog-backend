@@ -1,7 +1,7 @@
 from flask_socketio import SocketIO, send, emit, join_room
 from flask import request
 
-socketio = SocketIO(cors_allowed_origins = '*')
+socketio = SocketIO(path = '/api/socket.io', cors_allowed_origins = '*')
 user_map = {}
 
 @socketio.on('bind-user', namespace="/api")
@@ -18,10 +18,8 @@ def on_bind (data):
     print('socket error; Invalid token', e)
 
 def send_if_online (user_id, data):
-  print(user_id in user_map, user_map, '--------------------')
   if user_id in user_map:
     send(data, room = user_map[user_id], namespace="/api")
-    print('sended~~~~~~', user_id, data)
     return True
   return False
 
