@@ -50,7 +50,7 @@ class TestingConfig(Config):
   ALGOLIA_INDEX = os.environ.get('DEV_ALGOLIA_INDEX')
 
 class ProductionConfig(Config):
-  DEBUG = True
+  DEBUG = False
   SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
   QI_NIU_BUCKET = os.environ.get('QI_NIU_BUCKET')
   QI_NIU_LINK_URL = os.environ.get('QI_NIU_LINK_URL')
