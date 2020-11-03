@@ -4,7 +4,7 @@ git add .
 git commit -m publish
 git pull origin master
 git push
-ssh root@wintc.top << autoscript
+ssh root@8.129.22.92 << autoscript
 cd ~
 source env.sh
 cd /home/lushg/blog-backend
