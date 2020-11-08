@@ -14,8 +14,6 @@ git pull origin master
 pip install --upgrade pip command
 pip install -r requirement.txt
 python main.py db upgrade
-pm2 stop blog-server
-pm2 delete blog-server
-pm2 start gunicorn --name blog-server --worker-class eventlet -w 5 -b:5000 main:app
+nohup gunicorn -worker-class eventlet -w 5 -b:5000 main:app &
 autoscript
 echo 'done'
