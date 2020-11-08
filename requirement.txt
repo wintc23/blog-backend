@@ -8,6 +8,8 @@ chardet==3.0.4
 click==6.7
 Command==0.1.0
 cryptography==2.3.1
+dnspython==1.16.0
+eventlet==0.29.1
 Flask==1.0.2
 Flask-Cors==3.0.6
 Flask-HTTPAuth==3.2.4
@@ -18,6 +20,8 @@ Flask-Script==2.0.6
 Flask-SocketIO==4.3.1
 Flask-SQLAlchemy==2.3.2
 ForgeryPy==0.1
+greenlet==0.4.17
+gunicorn==20.0.4
 idna==2.7
 itsdangerous==0.24
 Jinja2==2.10
