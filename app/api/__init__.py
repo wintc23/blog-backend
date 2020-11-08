@@ -8,7 +8,6 @@ from .. import db
 
 @api.before_request
 def before_request():
-  print('before_request')
   if request.method == 'OPTIONS':
     return jsonify({ 'success': True })
   authString = request.headers.get('Authorization', '')

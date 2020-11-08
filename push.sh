@@ -16,6 +16,6 @@ pip install -r requirement.txt
 python main.py db upgrade
 pm2 stop blog-server
 pm2 delete blog-server
-pm2 start python --name blog-server -- main.py runserver --host 0.0.0.0 --threaded
+pm2 start gunicorn --name blog-server --worker-class eventlet -w 5 -b:5000 main:app
 autoscript
 echo 'done'
