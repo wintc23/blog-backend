@@ -3,9 +3,10 @@ algoliasearch==2.3.0
 asn1crypto==0.24.0
 blinker==1.4
 certifi==2019.3.9
-cffi==1.11.5
+cffi==1.14.3
 chardet==3.0.4
 click==6.7
+Command==0.1.0
 cryptography==2.3.1
 Flask==1.0.2
 Flask-Cors==3.0.6
@@ -22,7 +23,6 @@ itsdangerous==0.24
 Jinja2==2.10
 Mako==1.0.7
 MarkupSafe==1.0
-Pillow==5.3.0
 pycparser==2.19
 PyMySQL==0.9.2
 python-dateutil==2.7.3
