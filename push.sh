@@ -14,6 +14,6 @@ git pull origin master
 pip install --upgrade pip command
 pip install -r requirement.txt
 python main.py db upgrade
-nohup gunicorn -worker-class eventlet -w 5 -b:5000 main:app &
+nohup gunicorn --worker-class eventlet -w 5 -b:5000 main:app &
 autoscript
 echo 'done'
