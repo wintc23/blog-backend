@@ -1,0 +1,8 @@
+{
+  "apps": [{
+    "name": "blog-server",
+    "script": "gunicorn --worker-class eventlet -w 5 -b:5000 main:app",
+    "instances": 1,
+    "log_date_format":"YYYY-MM-DD HH:mm Z"
+  }]
+}
