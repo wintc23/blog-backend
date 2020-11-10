@@ -1,26 +1,34 @@
 from flask_socketio import SocketIO, send, emit, join_room, leave_room
 from flask import request
 
-socketio = SocketIO(path = '/api/socket.io', cors_allowed_origins = '*')
+socketio = SocketIO(cors_allowed_origins = '*')
 user_map = {}
+sid_map = {}
 
 @socketio.on('bind-user', namespace="/api")
 def on_bind (data):
   from .models import User
   try:
     user = User.verify_auth_token(data['token'])
-    print(user, 'bind-user')
     if not user.id in user_map:
       user_map[user.id] = request.sid
     else:
       join_room(user_map[user.id])
-  except e:
-    print('socket error; Invalid token', e)
+    sid_map[request.sid] = user_map[user.id]
+  except:
+    print('socket error; Invalid token')
 
-@socketio.on('disconnect')
+@socketio.on('disconnect', namespace="/api")
 def on_disconnect ():
-  print('disconnect')
   sid = request.sid
+  if sid in sid_map:
+    room_sid = sid_map.pop(sid)
+    leave_room(room_sid)
+    if not room_sid in sid_map.values():
+      socketio.close_room(room_sid)
+      if room_sid in user_map:
+        user_map.pop(room_sid)
+        print(sid_map, user_map)
 
 def send_if_online (user_id, data):
   if user_id in user_map:

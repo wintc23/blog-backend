@@ -28,10 +28,8 @@ def save_file(url):
     filename = str(uuid.uuid4()).replace('-', '')
     token = get_token(filename)
     ret, _ = put_data(token, filename, data = res.read())
-    print(ret)
     return ret.get('key')
   except Exception as e:
-    print(e, '~~~~~~~~')
     return ''
 
 def save_all_user_avatar(base):
@@ -68,16 +66,13 @@ def github_login(code):
   req = urllib.request.Request(url, params, headers)
   html = urllib.request.urlopen(req).read().decode('utf-8')
   access_data = json.loads(html)
-  print('access_data', access_data)
   if access_data.get('error', ''):
     return bad_request('链接已失效，请重新登录', True)
   access_token = access_data['access_token']
   headers['Authorization'] = 'token ' + access_data['access_token']
-  print('access_token', access_data['access_token'])
   req2 = urllib.request.Request(url='https://api.github.com/user', headers=headers)
   html2 = urllib.request.urlopen(req2).read().decode('utf-8')
   info = json.loads(html2)
-  print('userinfo', info)
   id_string = 'github' + str(info['id'])
   user = User.query.filter_by(id_string=id_string).first()
   if not user:
@@ -125,7 +120,6 @@ def qq_login():
   }
   params = urllib.parse.urlencode(data).encode('utf-8')
   req = urllib.request.Request(url, params, headers)
-  print(req)
   html = urllib.request.urlopen(req).read().decode('utf-8')
   
   token_info = {}
@@ -137,7 +131,6 @@ def qq_login():
     key, value = subList
     token_info[key] = value
   
-  print(token_info, html, 'token_info')  
   if not 'access_token' in token_info:
     return bad_request('链接已失效，请重新登录', True)
   access_token = token_info['access_token']
@@ -146,12 +139,10 @@ def qq_login():
   reg = re.compile('\{.*\}')
   info_str = reg.search(html2).group(0)
   info = json.loads(info_str)
-  print(info, 'info')
   if not 'openid' in info:
     return bad_request('链接已失效，请重新登录', True)
   id_string = 'qq' + info['openid']
   user = User.query.filter_by(id_string=id_string).first()
-  print('user', user)
   if not user:
     data = {
       'openid': info['openid'],

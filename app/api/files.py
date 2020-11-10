@@ -30,7 +30,6 @@ def get_qiniu_token(filename):
 @api.route('/save-image/', methods = ['PUT'])
 @permission_required(Permission.ADMIN)
 def save_post_image():
-  print(request.files)
   f = request.files['image']
   filename = str(uuid.uuid1()).replace('-', '')
   dirname, _ = os.path.split(os.path.abspath(sys.argv[0]))

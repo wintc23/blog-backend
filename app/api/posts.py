@@ -161,7 +161,6 @@ def add_post(post_type_id):
   post = Post(author = g.current_user, hide = True, type_id = post_type_id)
   db.session.add(post)
   db.session.commit()
-  print(post.id)
   return jsonify({ 'message': '创建文章成功', 'post_id': post.id, 'notify': True })
 
 @api.route('/save-post/', methods = ['POST'])
@@ -200,7 +199,6 @@ def save_post():
     # 百度推送
     baidu_push_info = { 0: '', 1: 'del', 2: 'urls', 3: 'update' }
     push_state = auto_push(baidu_push_info[action_type], post.id)
-    print(push_state)
 
     # algolia第三方搜索推送
     if action_type:
@@ -258,7 +256,6 @@ def like_post(post_id):
     reciver = current_app.config['FLASK_ADMIN']
     domain = current_app.config["DOMAIN"]
     url = '{}/article/{}'.format(domain, post_id)
-    print(url, '~~~~~~~~~~~~')
     send_email(reciver,
       '文章点赞',
       mail_type = NOTIFY['LIKE'],

@@ -106,7 +106,6 @@ class User(db.Model):
         db.session.rollback()
 
   def generate_auth_token(self, expiration):
-    print(expiration)
     s = Serializer(current_app.config['SECRET_KEY'], expires_in = expiration)
     return s.dumps({'id': self.id}).decode('utf-8')
 
@@ -117,7 +116,6 @@ class User(db.Model):
       data = s.loads(token.encode('utf-8'))
     except:
       return None
-    print(data)
     return User.query.get(data['id'])
   
   def can(self, permission):

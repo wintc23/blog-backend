@@ -22,6 +22,8 @@ class Config:
   ENV = os.environ.get('FLASK_CONFIG') or 'default'
   ALGOLIA_APP_ID = os.environ.get('ALGOLIA_APP_ID')
   ALGOLIA_ADMIN_API_KEY = os.environ.get('ALGOLIA_ADMIN_API_KEY')
+  SQLALCHEMY_POOL_RECYCLE = 300
+  SQLALCHEMY_POOL_TIMEOUT = 20
 
   @staticmethod
   def init_app(app):
