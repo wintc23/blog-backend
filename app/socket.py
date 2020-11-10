@@ -1,4 +1,4 @@
-from flask_socketio import SocketIO, send, emit, join_room
+from flask_socketio import SocketIO, send, emit, join_room, leave_room
 from flask import request
 
 socketio = SocketIO(path = '/api/socket.io', cors_allowed_origins = '*')
@@ -17,6 +17,11 @@ def on_bind (data):
   except e:
     print('socket error; Invalid token', e)
 
+@socketio.on('disconnect')
+def on_disconnect ():
+  print('disconnect')
+  sid = request.sid
+
 def send_if_online (user_id, data):
   if user_id in user_map:
     send(data, room = user_map[user_id], namespace="/api")
@@ -24,7 +29,6 @@ def send_if_online (user_id, data):
   return False
 
 def notify (user_id, data):
-  print('notify------', data, user_id)
   msg_data = {
     "type": 'notify',
     "data": data

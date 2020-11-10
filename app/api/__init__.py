@@ -21,6 +21,7 @@ def before_request():
 def after_request(response):
   try:
     db.session.commit()
+    db.session.close()
   except:
     response = errors.server_error('服务器出现异常', True)
   return response
