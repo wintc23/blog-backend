@@ -15,6 +15,7 @@ def on_bind (data):
     else:
       join_room(user_map[user.id])
     sid_map[request.sid] = user_map[user.id]
+    print('bind-user', sid_map, user.id)
   except:
     print('socket error; Invalid token')
 
