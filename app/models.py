@@ -228,7 +228,7 @@ class Post(db.Model):
   likes = db.relationship('Like', backref = 'post', lazy = 'dynamic')
   tags = db.relationship('Tag',
     secondary = post_tag_relations,
-    backref = db.backref('tags', lazy = 'dynamic'),
+    backref = db.backref('posts', lazy = 'dynamic'),
     lazy='dynamic')
 
   @staticmethod
@@ -439,10 +439,7 @@ class Tag(db.Model):
   __tablename__ = 'tags'
   id = db.Column(db.Integer, primary_key = True)
   title = db.Column(db.String(64))
-  posts = db.relationship('Post',
-    secondary = post_tag_relations,
-    backref = db.backref('posts', lazy = 'dynamic'),
-    lazy='dynamic')
+
 
   def to_json(self):
     return {

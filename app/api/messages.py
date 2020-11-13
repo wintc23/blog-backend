@@ -9,6 +9,7 @@ from sqlalchemy import or_
 from ..email import send_email
 from ..defines import NOTIFY
 from ..socket import notify
+import time
 
 @api.route('/get-messages/', methods=["POST"])
 def get_messages():
@@ -59,6 +60,7 @@ def get_message_detail(msg_id):
 @api.route('/add-message/', methods = ['POST'])
 @login_required
 def add_message():
+  start = time.time()
   params = {}
   body = request.json.get('body', '')
   if not body:
@@ -82,7 +84,8 @@ def add_message():
 
   # 给管理员发送邮件
   domain = current_app.config["DOMAIN"]
-  url = '{}/message/{}?newId={}'.format(domain, params.get('root_response_id', '') or msg.id, msg.id)
+  root_id = params.get('root_response_id', '') or msg.id
+  url = '{}/message/{}?newId={}'.format(domain, root_id, msg.id)
   reciver = current_app.config['FLASK_ADMIN']
   notify_data = {
     "url": url,
@@ -90,14 +93,15 @@ def add_message():
     'username': g.current_user.username
   }
 
-  role_list = filter(lambda r : r.has_permission(Permission.ADMIN), Role.query.all())
-  role_list = list(role_list)
-  if role_list:
-    user_list = role_list[0].users.all()
-    if user_list:
-      notify(user_list[0].id, { **notify_data, 'type': NOTIFY["MESSAGE"] })
+  if not g.current_user.is_administrator():
+    role_list = [r for r in Role.query.all() if r.has_permission(Permission.ADMIN)]
+    role = role_list and role_list[0]
+    if role:
+      user = role.users.first()
+      if user:
+        notify(user.id, { **notify_data, 'type': NOTIFY["MESSAGE"] })
+    send_email(reciver, '新增留言', mail_type = NOTIFY['MESSAGE'], **notify_data)
 
-  send_email(reciver, '新增留言', mail_type = NOTIFY['MESSAGE'], **notify_data)
   # 给被回复者推送邮件
   if response:
     user_id = response.author_id

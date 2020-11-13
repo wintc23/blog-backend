@@ -46,7 +46,6 @@ def add_link():
   link = FriendLink(**params)
   db.session.add(link)
   db.session.commit()
-  domain = current_app.config["DOMAIN"]
 
   return jsonify({ 'message': '添加成功', 'notify': True })
 

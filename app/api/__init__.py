@@ -2,7 +2,7 @@ from flask import Blueprint, request, g, jsonify
 
 api = Blueprint('api', __name__)
 
-from . import comments, posts, users, decorators, errors, files, messages, topic, tag, link
+from . import comments, posts, users, decorators, errors, files, messages, topic, tag, link, sitemap
 from ..models import User
 from .. import db
 
@@ -21,7 +21,6 @@ def before_request():
 def after_request(response):
   try:
     db.session.commit()
-    db.session.close()
   except:
     response = errors.server_error('服务器出现异常', True)
   return response

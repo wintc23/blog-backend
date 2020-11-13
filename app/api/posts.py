@@ -7,7 +7,6 @@ from .errors import *
 from .decorators import *
 from sqlalchemy import or_, and_
 from ..backup import git_backup
-from ..baidu import auto_push
 from json import dumps
 from ..email import send_email
 from ..algolia import save_objects, delete_objects
@@ -20,13 +19,6 @@ def get_post_types():
   else:
     type_list = PostType.query.filter_by(special = 0).all()
   return jsonify({ 'list': list(map(lambda t: t.to_json(), type_list)) })
-
-@api.route('/get-visible-posts/')
-def get_visible_posts():
-  hide_post_type = PostType.query.filter_by(special = 1).first()
-  post_list = Post.query.filter(and_(Post.hide == False, Post.type_id != hide_post_type.id)).all()
-  post_list = list(map(lambda post: post.id, post_list))
-  return jsonify({ 'list': post_list })
 
 @api.route('/get-posts/', methods=["POST"])
 def get_post_list():
@@ -170,15 +162,14 @@ def save_post():
   if not post_id:
     return not_found('查找不到文章', True)
   post = Post.query.get(post_id)
-
-  action_type = 0 | (0 if post.hide else 1) | (0 if request.json['hide'] else 2)
-
   if not post:
     return not_found('查找不到文章', True)
+
+  showed = not post.hide
+  show = not request.json['hide']
   # 基本属性
   for key in ['title', 'hide', 'abstract', 'hide', 'body_html', 'type_id', 'abstract_image', 'topic_id', 'keywords', 'description']:
     setattr(post, key, request.json[key])
-  print(request.json)
   
   # 标签
   for tag in post.tags.all():
@@ -196,22 +187,15 @@ def save_post():
 
   push_state = False
   if not post.type.special:
-    # 百度推送
-    baidu_push_info = { 0: '', 1: 'del', 2: 'urls', 3: 'update' }
-    push_state = auto_push(baidu_push_info[action_type], post.id)
-
     # algolia第三方搜索推送
-    if action_type:
-      if action_type == 1:
-        delete_objects([post.id], 'post')
-      else:
-        save_objects([post.to_json()], 'post')
-
+    if show:
+      save_objects([post.to_json()], 'post')
+    elif showed:
+      delete_objects([post.id], 'post')
 
   return jsonify({
     'message': '保存成功',
     'notify': True,
-    'push_state': push_state
   })
 
 @api.route('/delete-post/<post_id>')
@@ -221,7 +205,6 @@ def delete_post(post_id):
   if not post:
     return not_found('查找不到文章', True)
   db.session.delete(post)
-  push_state = auto_push('del', post.id)
   delete_objects([post.id], 'post')
   return jsonify({
     'message': '删除成功',
@@ -241,8 +224,6 @@ def get_about_me():
 @api.route('/like-post/<post_id>')
 @login_required
 def like_post(post_id):
-  if not g.current_user:
-    return unauthorized('请先登录', True)
   post = Post.query.get(post_id) if post_id else None
   if not post:
     return not_found('找不到文章', True)
@@ -253,15 +234,16 @@ def like_post(post_id):
     db.session.commit()
     json = { 'likes': post.likes.count() }
     json['like'] = True
-    reciver = current_app.config['FLASK_ADMIN']
-    domain = current_app.config["DOMAIN"]
-    url = '{}/article/{}'.format(domain, post_id)
-    send_email(reciver,
-      '文章点赞',
-      mail_type = NOTIFY['LIKE'],
-      username = g.current_user.username,
-      post_title = post.title,
-      url = url)
+    if not g.current_user.is_administrator():
+      reciver = current_app.config['FLASK_ADMIN']
+      domain = current_app.config["DOMAIN"]
+      url = '{}/article/{}'.format(domain, post_id)
+      send_email(reciver,
+        '文章点赞',
+        mail_type = NOTIFY['LIKE'],
+        username = g.current_user.username,
+        post_title = post.title,
+        url = url)
   else:
     json = { 'likes': post.likes.count(), 'like': True, 'notify': True, 'message': '您已赞过此文章了' }
   return jsonify(json)
@@ -290,6 +272,6 @@ def get_top_ten():
   post_type = PostType.query.filter_by(default = True).first()
   if not post_type:
     return server_error('服务器查询数据库失败')
-  pagination = post_type.posts.order_by(Post.read_times.desc()).paginate(1, per_page = 5, error_out = False)
-  post_list = list(map(lambda post: post.abstract_json(), pagination.items))
+  post_list = post_type.posts.order_by(Post.read_times.desc()).limit(5).all()
+  post_list = list(map(lambda post: post.abstract_json(), post_list))
   return jsonify({ 'list': post_list })

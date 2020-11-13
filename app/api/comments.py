@@ -50,16 +50,17 @@ def add_comment():
     'content': body,
     'username': g.current_user.username
   }
-  role_list = filter(lambda r : r.has_permission(Permission.ADMIN), Role.query.all())
-  role_list = list(role_list)
-  if role_list:
-    user_list = role_list[0].users.all()
-    if user_list:
-      notify(user_list[0].id, { **notify_data, 'type': NOTIFY["COMMENT"] })
+  if not g.current_user.is_administrator():
+    role_list = [r for r in Role.query.all() if r.has_permission(Permission.ADMIN)]
+    role = role_list and role_list[0]
+    if role:
+      user = role.users.first()
+      if user:
+        notify(user.id, { **notify_data, 'type': NOTIFY["COMMENT"] })
+    # 发邮件
+    reciver = current_app.config['FLASK_ADMIN']
+    send_email(reciver, '发表评论', mail_type = NOTIFY["COMMENT"], **notify_data)
 
-  reciver = current_app.config['FLASK_ADMIN']
-  
-  send_email(reciver, '发表评论', mail_type = NOTIFY["COMMENT"], **notify_data)
   # 给被回复者推送消息、邮件
   if "response" in params:
     user_id = params['response'].author_id

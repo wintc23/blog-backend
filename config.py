@@ -3,7 +3,7 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
   SECRET_KEY = os.environ.get('SECRET_KEY') or 'abc+1s'
-  SQLALCHEMY_TRACK_MODIFICATIONS = True
+  SQLALCHEMY_TRACK_MODIFICATIONS = False
   MAIL_SERVER = 'smtp.qq.com'
   MAIL_PORT = 465
   MAIL_USE_SSL = True
@@ -18,12 +18,10 @@ class Config:
   FLASK_BBS_PER_PAGE = int(os.environ.get('FLASK_BBS_PER_PAGE'))
   QI_NIU_ACCESS_KEY = os.environ.get('QI_NIU_ACCESS_KEY')
   QI_NIU_SECRET_KEY = os.environ.get('QI_NIU_SECRET_KEY')
-  BAIDU_TOKEN = os.environ.get('BAIDU_TOKEN')
   ENV = os.environ.get('FLASK_CONFIG') or 'default'
   ALGOLIA_APP_ID = os.environ.get('ALGOLIA_APP_ID')
   ALGOLIA_ADMIN_API_KEY = os.environ.get('ALGOLIA_ADMIN_API_KEY')
   SQLALCHEMY_POOL_RECYCLE = 300
-  SQLALCHEMY_POOL_TIMEOUT = 20
 
   @staticmethod
   def init_app(app):
