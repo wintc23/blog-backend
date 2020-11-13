@@ -21,16 +21,20 @@ def on_bind (data):
 @socketio.on('disconnect', namespace="/api")
 def on_disconnect ():
   sid = request.sid
+  print('disconnect', sid)
   if sid in sid_map:
     room_sid = sid_map.pop(sid)
     leave_room(room_sid)
+    print('disconnect_1', sid_map)
     if not room_sid in sid_map.values():
+      print('disconnect_2', user_map)
       socketio.close_room(room_sid)
       if room_sid in user_map:
         user_map.pop(room_sid)
         print(sid_map, user_map)
 
 def send_if_online (user_id, data):
+  print('send_if_online', user_map)
   if user_id in user_map:
     send(data, room = user_map[user_id], namespace="/api")
     return True
