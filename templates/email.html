@@ -27,7 +27,7 @@
   </div>
   {% elif mail_type == NOTIFY["LIKE"] %}
   <div>
-    <span class="username">{{ user.username }}</span>赞了文章<a href="{{ url }}">《{{ post_title }}》</a>。
+    <span class="username">{{ username }}</span>赞了文章<a href="{{ url }}">《{{ post_title }}》</a>。
   </div>
   {% elif mail_type == NOTIFY["COMMENT_REPLY"] %}
   <div>

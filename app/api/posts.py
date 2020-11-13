@@ -259,8 +259,8 @@ def like_post(post_id):
     send_email(reciver,
       '文章点赞',
       mail_type = NOTIFY['LIKE'],
-      user = g.current_user,
-      post = post,
+      username = g.current_user.username,
+      post_title = post.title,
       url = url)
   else:
     json = { 'likes': post.likes.count(), 'like': True, 'notify': True, 'message': '您已赞过此文章了' }
