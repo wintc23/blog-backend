@@ -1,4 +1,6 @@
 
+from datetime import datetime
+
 from flask import request, current_app, jsonify, g
 from .. import db
 from . import api
@@ -181,11 +183,12 @@ def save_post():
     tag = Tag.query.get(tag_id)
     if tag:
       post.tags.append(tag)
+  print('add-post')
   db.session.add(post)
+  db.session.commit()
   # 异步备份
   git_backup("posts/{0}.json".format(post_id), dumps(post.to_json()))
 
-  push_state = False
   if not post.type.special:
     # algolia第三方搜索推送
     if show:
@@ -208,8 +211,7 @@ def delete_post(post_id):
   delete_objects([post.id], 'post')
   return jsonify({
     'message': '删除成功',
-    'notify': True,
-    'push_state': push_state
+    'notify': True
   })
 
 @api.route('/get-about-me/')
@@ -272,6 +274,13 @@ def get_top_ten():
   post_type = PostType.query.filter_by(default = True).first()
   if not post_type:
     return server_error('服务器查询数据库失败')
-  post_list = post_type.posts.order_by(Post.read_times.desc()).limit(5).all()
+  post_list = post_type.posts.all()
+  utcnow = datetime.utcnow()
+  times = {}
+  for post in post_list:
+    delta_time = utcnow - post.timestamp
+    times[post.id] = post.read_times / (delta_time.days + 1)
+  post_list.sort(key = lambda x: times[x.id], reverse = True)
+  post_list = post_list[:5]
   post_list = list(map(lambda post: post.abstract_json(), post_list))
   return jsonify({ 'list': post_list })
