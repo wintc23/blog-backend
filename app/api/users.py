@@ -231,6 +231,8 @@ def get_admin_info():
   if not post_type:
     return not_found('未找到管理员信息')
   user = role.users.first()
+  if not user:
+    return not_found('未找到管理员信息')
   json = user.to_json()
   post_count = Post.query.filter(and_(Post.hide == False, Post.type_id != post_type.id)).count()
   json['post_count'] = post_count
