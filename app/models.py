@@ -5,7 +5,6 @@ from datetime import datetime
 import time
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 
-
 class Permission:
   FOLLOW = 1
   COMMENT = 2
@@ -495,7 +494,8 @@ class FriendLink(db.Model):
 class StatEvent(db.Model):
   __tablename__ = 'stat_event'
   id = db.Column(db.Integer, primary_key = True)
-  name = db.Column(db.String(64))
+  name = db.Column(db.String(32), index = True)
+  params = db.Column(db.Text)
   timestamp = db.Column(db.DateTime, default = datetime.utcnow)
   author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
   visitor_id = db.Column(db.String(32))
@@ -507,6 +507,8 @@ class StatEvent(db.Model):
       "name": self.name,
       "timestamp": self.timestamp,
       "author_id": self.author_id,
+      "visitor_id": self.visitor_id,
+      "params": self.params,
       "ip": self.ip,
     }
 
