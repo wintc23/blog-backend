@@ -13,6 +13,7 @@ git clean -df
 git pull origin master
 pip install --upgrade pip command
 pip install -r requirement.txt
+service mysql restart
 python main.py db upgrade
 pm2 restart pm2.json
 autoscript
