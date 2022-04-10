@@ -498,8 +498,8 @@ class StatEvent(db.Model):
   params = db.Column(db.Text)
   timestamp = db.Column(db.DateTime, default = datetime.utcnow)
   author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-  visitor_id = db.Column(db.String(32))
-  ip = db.Column(db.String(40))
+  visitor_id = db.Column(db.String(32), index = True)
+  ip = db.Column(db.String(40), index = True)
 
   def to_json(self):
     return {
