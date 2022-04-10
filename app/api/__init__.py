@@ -2,7 +2,7 @@ from flask import Blueprint, request, g, jsonify
 
 api = Blueprint('api', __name__)
 
-from . import comments, posts, users, decorators, errors, files, messages, topic, tag, link, sitemap
+from . import comments, posts, users, decorators, errors, files, messages, topic, tag, link, sitemap, stat
 from ..models import User
 from .. import db
 

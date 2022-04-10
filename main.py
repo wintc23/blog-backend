@@ -1,5 +1,5 @@
 import os
-from app.models import User, Role, Post, Like, Comment, PostType, Message, Tag, Topic, post_tag_relations
+from app.models import User, Role, Post, Like, Comment, PostType, Message, Tag, Topic, StatEvent, post_tag_relations
 from app.socket import socketio
 from flask_script import Manager, Shell
 from flask_migrate import Migrate, MigrateCommand
@@ -33,6 +33,7 @@ def make_shell_context():
     delete_all_posts = delete_all_posts,
     save_all_user_avatar = save_all_user_avatar,
     post_tag_relations = post_tag_relations,
+    StatEvent = StatEvent,
     db = db)
 
 manager.add_command('shell', Shell(make_context = make_shell_context))

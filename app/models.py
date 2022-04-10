@@ -82,7 +82,8 @@ class User(db.Model):
   comments = db.relationship('Comment', backref = 'author', lazy = 'dynamic')
   likes = db.relationship('Like', backref = 'author', lazy = 'dynamic')
   messages = db.relationship('Message', backref = 'author', lazy = 'dynamic')
- 
+  stat_events = db.relationship('StatEvent', backref = 'author', lazy = 'dynamic')
+
   def __init__(self, **kwargs):
     super(User, self).__init__(**kwargs)
     if not self.role:
@@ -490,3 +491,23 @@ class FriendLink(db.Model):
       'title': self.title,
       'link': self.link
     }
+
+class StatEvent(db.Model):
+  __tablename__ = 'stat_event'
+  id = db.Column(db.Integer, primary_key = True)
+  name = db.Column(db.String(64))
+  timestamp = db.Column(db.DateTime, default = datetime.utcnow)
+  author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+  visitor_id = db.Column(db.String(32))
+  ip = db.Column(db.String(40))
+
+  def to_json(self):
+    return {
+      "id": self.id,
+      "name": self.name,
+      "timestamp": self.timestamp,
+      "author_id": self.author_id,
+      "ip": self.ip,
+    }
+
+
