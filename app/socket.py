@@ -47,3 +47,10 @@ def notify (user_id, data):
     "data": data
   }
   return send_if_online(user_id, msg_data)
+
+
+def broadcast (type, data):
+  socketio.emit('message', {
+    'type': type,
+    'data': data
+  }, namespace='/api')
