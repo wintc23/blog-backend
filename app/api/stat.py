@@ -40,9 +40,12 @@ def get_week_start(value):
 
 def build_site_stat_summary():
   start_date = get_visit_start_date()
-  visit_count = get_visit_query(start_time = start_date).count()
+  query = get_visit_query(start_time = start_date)
+  visit_count = query.count()
+  visitor_count = query.with_entities(StatEvent.visitor_id).filter(StatEvent.visitor_id.isnot(None)).distinct().count()
   return {
     'visit_count': visit_count,
+    'visitor_count': visitor_count,
     'visit_start_date': start_date.strftime('%Y-%m-%d')
   }
 
