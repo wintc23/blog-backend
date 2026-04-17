@@ -1,7 +1,14 @@
 # algolia搜索服务
+import os
 from flask import current_app
 from algoliasearch.search_client import SearchClient
 from .models import Post
+
+def _algolia_disabled():
+  # Opt-out flag for dev / offline environments where Algolia is
+  # unreachable. `ALGOLIA_DISABLED=1` short-circuits every call so
+  # save_post doesn't pay a ~10 s timeout per request.
+  return os.environ.get('ALGOLIA_DISABLED', '').lower() in ('1', 'true', 'yes')
 
 def get_index_context():
   app_id = current_app.config['ALGOLIA_APP_ID']
@@ -12,12 +19,16 @@ def get_index_context():
   return index
 
 def save_objects(data_list, data_type):
+  if _algolia_disabled():
+    return
   for i in range(len(data_list)):
     data_list[i]['objectID'] = '%s_%s' % (data_type, data_list[i]['id'])
   index = get_index_context()
   index.save_objects(data_list, { 'autoGenerateObjectIDIfNotExist': True })
 
 def delete_objects(id_list, data_type):
+  if _algolia_disabled():
+    return
   for i in range(len(id_list)):
     id_list[i] = '{}_{}'.format(data_type, id_list[i])
   index = get_index_context()

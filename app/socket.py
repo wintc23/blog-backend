@@ -7,7 +7,14 @@ sid_map = {}
 
 @socketio.on('bind-user', namespace="/api")
 def on_bind (data):
+  # Socket.IO events bypass Flask's request lifecycle, so the usual
+  # `teardown_request -> db.session.remove()` never fires. Without an
+  # explicit cleanup here every bind-user call leaks one connection back
+  # in the pool, which exhausts QueuePool (size 10 + overflow 10) after a
+  # few hundred connects and turns every subsequent HTTP request into a
+  # 500 with "QueuePool limit reached".
   from .models import User
+  from . import db
   try:
     user = User.verify_auth_token(data['token'])
     if not user.id in user_map:
@@ -18,6 +25,8 @@ def on_bind (data):
     print('bind-user', sid_map, user.id)
   except:
     print('socket error; Invalid token')
+  finally:
+    db.session.remove()
 
 @socketio.on('disconnect', namespace="/api")
 def on_disconnect ():

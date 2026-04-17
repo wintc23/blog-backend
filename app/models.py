@@ -4,6 +4,7 @@ from app import db
 from datetime import datetime
 import time
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 class Permission:
   FOLLOW = 1
@@ -214,7 +215,13 @@ class Post(db.Model):
   title = db.Column(db.Text)
   keywords = db.Column(db.String(64)) # 关键字
   description = db.Column(db.String(128)) # 描述
-  body_html = db.Column(db.Text)
+  # MEDIUMTEXT (16 MB) — plain TEXT's 65 KB ceiling isn't enough once
+  # a post is saved through BlockNote: the full-HTML exporter wraps
+  # every paragraph / heading / list item in `.bn-block-outer >
+  # .bn-block > .bn-block-content` markup, inflating long articles
+  # past the limit (confirmed: a 40 KB TinyMCE post ballooned to
+  # ~68 KB after `blocksToFullHTML` and MySQL rejected the UPDATE).
+  body_html = db.Column(MEDIUMTEXT)
   hide = db.Column(db.Boolean, default = False)
   secret_code = db.Column(db.Text, default = '')
   abstract = db.Column(db.Text)

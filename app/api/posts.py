@@ -8,11 +8,31 @@ from ..models import PostType, Post, Permission, Like, Comment, Tag
 from .errors import *
 from .decorators import *
 from sqlalchemy import or_, and_
+from sqlalchemy.orm import load_only
 from ..backup import git_backup
 from json import dumps
 from ..email import send_email
 from ..algolia import save_objects, delete_objects
 from ..defines import NOTIFY
+
+# Columns required by `Post.abstract_json()`. Passing them via
+# `load_only(...)` on the list endpoints keeps the big `body_html` TEXT
+# column out of the SELECT — important because `ORDER BY timestamp DESC`
+# pushes the whole result set through MySQL's sort buffer, and dragging
+# `body_html` along blows past `sort_buffer_size` once there are enough
+# rows ("Out of sort memory" MySQL error 1038).
+ABSTRACT_POST_COLUMNS = (
+  Post.id,
+  Post.title,
+  Post.hide,
+  Post.timestamp,
+  Post.abstract,
+  Post.read_times,
+  Post.type_id,
+  Post.abstract_image,
+  Post.topic_id,
+  Post.author_id,
+)
 
 @api.route('/get-post-type/')
 def get_post_types():
@@ -27,7 +47,7 @@ def get_post_list():
   page = request.json.get('page', 1)
   per_page = current_app.config['FLASK_POSTS_PER_PAGE']
   hide_post_type = PostType.query.filter_by(special = 1).first()
-  query = Post.query.filter(Post.type_id != hide_post_type.id)
+  query = Post.query.filter(Post.type_id != hide_post_type.id).options(load_only(*ABSTRACT_POST_COLUMNS))
   if not g.current_user or not g.current_user.can(Permission.ADMIN):
     query = query.filter_by(hide = False)
   pagination = query.order_by(Post.timestamp.desc()).paginate(page, per_page = per_page, error_out = False)
@@ -47,7 +67,7 @@ def get_tag_posts():
     return server_error('服务器查询数据库失败', True)
   page = request.json.get('page', 1)
   per_page = current_app.config['FLASK_POSTS_PER_PAGE']
-  query = tag.posts
+  query = tag.posts.options(load_only(*ABSTRACT_POST_COLUMNS))
   if not g.current_user or not g.current_user.can(Permission.ADMIN):
     query = query.filter_by(hide = False)
   pagination = query.order_by(Post.timestamp.desc()).paginate(
@@ -76,9 +96,9 @@ def get_posts():
     return server_error('服务器查询数据库失败', True)
   page = request.json.get('page', 1)
   per_page = request.json.get('per_page', 5)
-  query = post_type.posts
+  query = post_type.posts.options(load_only(*ABSTRACT_POST_COLUMNS))
   if not g.current_user or not g.current_user.can(Permission.ADMIN):
-    query = post_type.posts.filter_by(hide = False)
+    query = query.filter_by(hide = False)
   pagination = query.order_by(Post.timestamp.desc()).paginate(
     page,
     per_page = per_page,
@@ -190,15 +210,45 @@ def save_post():
   git_backup("posts/{0}.json".format(post_id), dumps(post.to_json()))
 
   if not post.type.special:
-    # algolia第三方搜索推送
-    if show:
-      save_objects([post.to_json()], 'post')
-    elif showed:
-      delete_objects([post.id], 'post')
+    # Algolia 第三方搜索推送是锦上添花的非关键依赖：dev 环境连不到
+    # Algolia、或者 prod 偶发网络抖动时都会抛 AlgoliaUnreachableHostException。
+    # 此时数据库已经提交成功（上面的 db.session.commit 已经完成），
+    # 不应该因为搜索索引推送失败而让整个保存接口返 500。用 try/except
+    # 兜底即可——搜索索引最多暂时滞后，下一次保存或定时同步可以补上。
+    try:
+      if show:
+        save_objects([post.to_json()], 'post')
+      elif showed:
+        delete_objects([post.id], 'post')
+    except Exception as e:
+      print('algolia sync failed (non-fatal): {0}'.format(e))
 
   return jsonify({
     'message': '保存成功',
     'notify': True,
+  })
+
+@api.route('/update-post-body/<post_id>', methods = ['POST'])
+@permission_required(Permission.ADMIN)
+def update_post_body(post_id):
+  # Admin-only body-only update. Bypasses save_post's tag sync, git
+  # backup, and Algolia re-index so bulk content migrations stay fast
+  # and don't hang when third-party services (Algolia, Git remote) are
+  # unreachable. Use /save-post/ if you need to touch anything other
+  # than the body HTML.
+  post = Post.query.get(post_id)
+  if not post:
+    return not_found('查找不到文章', True)
+  body_html = request.json.get('body_html')
+  if body_html is None:
+    return bad_request('缺少 body_html 字段', True)
+  post.body_html = body_html
+  db.session.add(post)
+  db.session.commit()
+  return jsonify({
+    'message': '正文已更新',
+    'post_id': post.id,
+    'notify': False,
   })
 
 @api.route('/delete-post/<post_id>')
