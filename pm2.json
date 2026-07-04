@@ -1,11 +1,11 @@
 {
   "apps": [{
     "name": "blog-server",
-    "script": "gunicorn --worker-class eventlet -w 1 -b:5000 main:app",
+    "script": "/home/lushg/blog-backend/venv/bin/gunicorn --worker-class eventlet -w 1 -b:5000 main:app",
     "instances": 1,
     "log_date_format":"YYYY-MM-DD HH:mm Z",
     "env": {
-      "PATH": "/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin",
+      "PATH": "/home/lushg/blog-backend/venv/bin:/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin",
       "CODEX_COMMAND": "/root/.nvm/versions/node/v22.22.2/bin/codex"
     }
   }]
