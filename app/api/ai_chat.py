@@ -199,8 +199,19 @@ def _delete_session_data(session):
 
 class CodexClient(object):
   def __init__(self):
-    self.command = os.environ.get('CODEX_COMMAND', '/usr/local/bin/codex' if os.path.exists('/usr/local/bin/codex') else 'codex')
+    self.command = os.environ.get('CODEX_COMMAND', self._default_command())
     self.timeout = int(os.environ.get('CODEX_TIMEOUT', '120'))
+
+  def _default_command(self):
+    candidates = [
+      '/usr/local/bin/codex',
+      '/root/.nvm/versions/node/v22.22.2/bin/codex',
+      '/root/.nvm/versions/node/default/bin/codex',
+    ]
+    for item in candidates:
+      if os.path.exists(item):
+        return item
+    return 'codex'
 
   def send_message(self, chat_session, content, attachments):
     prompt = (content or '') + CODEX_OUTPUT_INSTRUCTIONS
@@ -385,7 +396,10 @@ class CodexClient(object):
       'CODEX_AUTH_TOKEN',
     ]
     env = dict([(key, os.environ[key]) for key in allowed if key in os.environ])
-    env['PATH'] = '/usr/local/bin:' + env.get('PATH', '')
+    extra_paths = ['/usr/local/bin']
+    if os.path.isabs(self.command):
+      extra_paths.append(os.path.dirname(self.command))
+    env['PATH'] = ':'.join(extra_paths + [env.get('PATH', '')])
     return env
 
 
