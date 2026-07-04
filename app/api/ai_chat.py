@@ -226,6 +226,7 @@ class CodexClient(object):
     try:
       proc = subprocess.Popen(
         command,
+        stdin=subprocess.DEVNULL,
         cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -243,6 +244,14 @@ class CodexClient(object):
         'metadata': {'error': 'timeout', 'timeout': self.timeout}
       }
     except Exception as e:
+      if isinstance(e, subprocess.TimeoutExpired):
+        if proc:
+          proc.kill()
+        return {
+          'ok': False,
+          'content': 'Codex 调用超时，请稍后重试。',
+          'metadata': {'error': 'timeout', 'timeout': self.timeout}
+        }
       current_app.logger.exception('Codex process failed before completion')
       return {
         'ok': False,
@@ -371,6 +380,8 @@ class CodexClient(object):
       item = event.get('item')
       if isinstance(item, dict):
         session_id = item.get('session_id') or item.get('sessionId') or item.get('thread_id') or session_id
+        if item.get('type') in ['agent_message', 'message'] and item.get('text'):
+          content = item.get('text')
         if item.get('type') in ['message', 'agent_message'] and item.get('role') == 'assistant':
           parts = item.get('content') or []
           texts = []
@@ -381,8 +392,6 @@ class CodexClient(object):
               texts.append(str(part))
           if texts:
             content = ''.join(texts)
-        if item.get('type') == 'agent_message' and item.get('text'):
-          content = item.get('text')
     return {'content': content.strip(), 'session_id': session_id}
 
   def _env(self):

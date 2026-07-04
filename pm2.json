@@ -6,7 +6,8 @@
     "log_date_format":"YYYY-MM-DD HH:mm Z",
     "env": {
       "PATH": "/home/lushg/blog-backend/venv/bin:/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin",
-      "CODEX_COMMAND": "/root/.nvm/versions/node/v22.22.2/bin/codex"
+      "CODEX_COMMAND": "/root/.nvm/versions/node/v22.22.2/bin/codex",
+      "CODEX_TIMEOUT": "170"
     }
   }]
 }
