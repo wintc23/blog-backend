@@ -21,3 +21,11 @@ def permission_required(permission):
       return func(*args, **kwargs)
     return decorated_function
   return decorator
+
+def ai_key_required(func):
+  @wraps(func)
+  def decorator(*args, **kwargs):
+    if not getattr(g, 'current_ai_key', None):
+      return unauthorized('AI 访问凭证无效或已过期')
+    return func(*args, **kwargs)
+  return decorator

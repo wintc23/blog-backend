@@ -2,6 +2,7 @@
 from flask import current_app
 from app import db
 from datetime import datetime
+import json
 import time
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
@@ -519,4 +520,127 @@ class StatEvent(db.Model):
       "ip": self.ip,
     }
 
+class AiAccessKey(db.Model):
+  __tablename__ = 'ai_access_keys'
+  id = db.Column(db.Integer, primary_key = True)
+  name = db.Column(db.String(128), nullable = False)
+  key_hash = db.Column(db.String(64), unique = True, index = True, nullable = False)
+  key_preview = db.Column(db.String(32), nullable = False)
+  key_encrypted = db.Column(db.Text)
+  enabled = db.Column(db.Boolean, default = True, index = True)
+  usage_limit = db.Column(db.Integer)
+  usage_count = db.Column(db.Integer, default = 0)
+  expires_at = db.Column(db.DateTime)
+  created_at = db.Column(db.DateTime, default = datetime.utcnow)
+  last_used_at = db.Column(db.DateTime)
+  created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+  sessions = db.relationship('AiChatSession', backref = 'access_key', lazy = 'dynamic')
 
+  def is_available(self):
+    if not self.enabled:
+      return False
+    if self.expires_at and self.expires_at < datetime.utcnow():
+      return False
+    if self.usage_limit is not None and self.usage_count >= self.usage_limit:
+      return False
+    return True
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'name': self.name,
+      'key_preview': self.key_preview,
+      'enabled': self.enabled,
+      'usage_limit': self.usage_limit,
+      'usage_count': self.usage_count,
+      'expires_at': time.mktime(self.expires_at.timetuple()) if self.expires_at else None,
+      'created_at': time.mktime(self.created_at.timetuple()) if self.created_at else None,
+      'last_used_at': time.mktime(self.last_used_at.timetuple()) if self.last_used_at else None,
+      'created_by_id': self.created_by_id
+    }
+
+class AiChatSession(db.Model):
+  __tablename__ = 'ai_chat_sessions'
+  id = db.Column(db.Integer, primary_key = True)
+  access_key_id = db.Column(db.Integer, db.ForeignKey('ai_access_keys.id'), nullable = False, index = True)
+  title = db.Column(db.String(128), default = '新的会话')
+  codex_session_id = db.Column(db.String(128), index = True)
+  status = db.Column(db.String(16), default = 'active', index = True)
+  pinned = db.Column(db.Boolean, default = False, index = True)
+  created_at = db.Column(db.DateTime, default = datetime.utcnow)
+  updated_at = db.Column(db.DateTime, default = datetime.utcnow)
+  last_message_at = db.Column(db.DateTime)
+  messages = db.relationship('AiChatMessage', backref = 'session', lazy = 'dynamic')
+
+  def touch(self):
+    now = datetime.utcnow()
+    self.updated_at = now
+    self.last_message_at = now
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'title': self.title,
+      'codex_session_id': self.codex_session_id,
+      'status': self.status,
+      'pinned': self.pinned,
+      'created_at': time.mktime(self.created_at.timetuple()) if self.created_at else None,
+      'updated_at': time.mktime(self.updated_at.timetuple()) if self.updated_at else None,
+      'last_message_at': time.mktime(self.last_message_at.timetuple()) if self.last_message_at else None
+    }
+
+class AiChatMessage(db.Model):
+  __tablename__ = 'ai_chat_messages'
+  id = db.Column(db.Integer, primary_key = True)
+  session_id = db.Column(db.Integer, db.ForeignKey('ai_chat_sessions.id'), nullable = False, index = True)
+  role = db.Column(db.String(16), nullable = False)
+  content = db.Column(MEDIUMTEXT)
+  content_type = db.Column(db.String(16), default = 'text')
+  codex_message_id = db.Column(db.String(128))
+  status = db.Column(db.String(16), default = 'completed')
+  metadata_json = db.Column(db.Text)
+  created_at = db.Column(db.DateTime, default = datetime.utcnow, index = True)
+  attachments = db.relationship('AiChatAttachment', backref = 'message', lazy = 'dynamic')
+
+  def metadata_data(self):
+    if not self.metadata_json:
+      return {}
+    try:
+      return json.loads(self.metadata_json)
+    except:
+      return {}
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'session_id': self.session_id,
+      'role': self.role,
+      'content': self.content,
+      'content_type': self.content_type,
+      'codex_message_id': self.codex_message_id,
+      'status': self.status,
+      'metadata': self.metadata_data(),
+      'created_at': time.mktime(self.created_at.timetuple()) if self.created_at else None,
+      'attachments': [item.to_json() for item in self.attachments.all()]
+    }
+
+class AiChatAttachment(db.Model):
+  __tablename__ = 'ai_chat_attachments'
+  id = db.Column(db.Integer, primary_key = True)
+  message_id = db.Column(db.Integer, db.ForeignKey('ai_chat_messages.id'), nullable = False, index = True)
+  file_key = db.Column(db.String(255), nullable = False)
+  file_url = db.Column(db.Text)
+  mime_type = db.Column(db.String(128))
+  size = db.Column(db.Integer)
+  created_at = db.Column(db.DateTime, default = datetime.utcnow)
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'message_id': self.message_id,
+      'file_key': self.file_key,
+      'file_url': self.file_url,
+      'mime_type': self.mime_type,
+      'size': self.size,
+      'created_at': time.mktime(self.created_at.timetuple()) if self.created_at else None
+    }
