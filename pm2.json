@@ -1,7 +1,7 @@
 {
   "apps": [{
     "name": "blog-server",
-    "script": "/home/lushg/blog-backend/venv/bin/gunicorn --worker-class eventlet -w 1 -b:5000 main:app",
+    "script": "/home/lushg/blog-backend/venv/bin/gunicorn --worker-class eventlet -w 1 --timeout 180 -b:5000 main:app",
     "instances": 1,
     "log_date_format":"YYYY-MM-DD HH:mm Z",
     "env": {
