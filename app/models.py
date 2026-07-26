@@ -499,6 +499,122 @@ class FriendLink(db.Model):
       'link': self.link
     }
 
+
+class Product(db.Model):
+  """A portfolio item managed independently from blog posts.
+
+  The repeated presentation fields are stored as JSON text so the current
+  MySQL/SQLAlchemy stack does not depend on a native JSON column.  The API
+  always exposes them as arrays and validates writes before persisting them.
+  """
+  __tablename__ = 'products'
+  id = db.Column(db.Integer, primary_key = True)
+  name = db.Column(db.String(128), nullable = False)
+  slug = db.Column(db.String(128), unique = True, index = True, nullable = False)
+  tagline = db.Column(db.String(255))
+  summary = db.Column(db.Text)
+  platform = db.Column(db.String(64))
+  version = db.Column(db.String(32))
+  status = db.Column(db.String(32), default = 'developing')
+  status_label = db.Column(db.String(64), default = '开发中')
+  logo_url = db.Column(db.Text)
+  cover_url = db.Column(db.Text)
+  accent_color = db.Column(db.String(16), default = '#2d8cf0')
+  highlights_json = db.Column(db.Text)
+  features_json = db.Column(MEDIUMTEXT)
+  steps_json = db.Column(MEDIUMTEXT)
+  screenshots_json = db.Column(MEDIUMTEXT)
+  links_json = db.Column(db.Text)
+  story_html = db.Column(MEDIUMTEXT)
+  published = db.Column(db.Boolean, default = False, index = True)
+  featured = db.Column(db.Boolean, default = False, index = True)
+  sort = db.Column(db.Integer, default = 0, index = True)
+  created_at = db.Column(db.DateTime, default = datetime.utcnow)
+  updated_at = db.Column(db.DateTime, default = datetime.utcnow)
+  sections = db.relationship(
+    'ProductSection',
+    backref = 'product',
+    lazy = 'dynamic',
+    cascade = 'all, delete-orphan',
+    order_by = 'ProductSection.sort'
+  )
+
+  def _json_list(self, value):
+    if not value:
+      return []
+    try:
+      data = json.loads(value)
+      return data if isinstance(data, list) else []
+    except:
+      return []
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'name': self.name,
+      'slug': self.slug,
+      'tagline': self.tagline,
+      'summary': self.summary,
+      'platform': self.platform,
+      'version': self.version,
+      'status': self.status,
+      'status_label': self.status_label,
+      'logo_url': self.logo_url,
+      'cover_url': self.cover_url,
+      'accent_color': self.accent_color,
+      'highlights': self._json_list(self.highlights_json),
+      'features': self._json_list(self.features_json),
+      'steps': self._json_list(self.steps_json),
+      'screenshots': self._json_list(self.screenshots_json),
+      'links': self._json_list(self.links_json),
+      'story_html': self.story_html,
+      'sections': [section.to_json() for section in self.sections.order_by(ProductSection.sort.asc(), ProductSection.id.asc()).all()],
+      'published': self.published,
+      'featured': self.featured,
+      'sort': self.sort,
+      'created_at': time.mktime(self.created_at.timetuple()) if self.created_at else None,
+      'updated_at': time.mktime(self.updated_at.timetuple()) if self.updated_at else None
+    }
+
+
+class ProductSection(db.Model):
+  __tablename__ = 'product_sections'
+  id = db.Column(db.Integer, primary_key = True)
+  product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable = False, index = True)
+  type = db.Column(db.String(32), nullable = False)
+  title = db.Column(db.String(128))
+  subtitle = db.Column(db.String(128))
+  layout = db.Column(db.String(32), default = 'default')
+  content_json = db.Column(MEDIUMTEXT)
+  visible = db.Column(db.Boolean, default = True)
+  sort = db.Column(db.Integer, default = 0, index = True)
+  created_at = db.Column(db.DateTime, default = datetime.utcnow)
+  updated_at = db.Column(db.DateTime, default = datetime.utcnow)
+
+  def content_data(self):
+    if not self.content_json:
+      return {}
+    try:
+      data = json.loads(self.content_json)
+      return data if isinstance(data, dict) else {}
+    except:
+      return {}
+
+  def to_json(self):
+    return {
+      'id': self.id,
+      'product_id': self.product_id,
+      'type': self.type,
+      'title': self.title,
+      'subtitle': self.subtitle,
+      'layout': self.layout,
+      'content': self.content_data(),
+      'visible': self.visible,
+      'sort': self.sort,
+      'created_at': time.mktime(self.created_at.timetuple()) if self.created_at else None,
+      'updated_at': time.mktime(self.updated_at.timetuple()) if self.updated_at else None
+    }
+
 class StatEvent(db.Model):
   __tablename__ = 'stat_event'
   id = db.Column(db.Integer, primary_key = True)
