@@ -36,6 +36,11 @@ def add_comment():
   comment = Comment(**params)
   db.session.add(comment)
   db.session.commit()
+  from .stat import record_business_event
+  record_business_event('comment.replied' if response_id else 'comment.created', {
+    'comment_id': comment.id,
+    'post_id': post.id,
+  })
   if g.current_user and g.current_user.can(Permission.ADMIN):
     comments = post.comments.all()
   else:
@@ -99,6 +104,8 @@ def delete_comment (comment_id):
   comment = Comment.query.get(comment_id)
   if not comment:
     return not_found('未找到该评论', True)
+  from .stat import record_business_event
+  record_business_event('comment.deleted', {'comment_id': comment.id, 'post_id': comment.post_id})
   db.session.delete(comment)
   return jsonify({ 'message': '删除评论成功', 'notify': True })
 
@@ -111,5 +118,7 @@ def set_comment_show(comment_id):
   if not comment:
     return not_found('未找到该评论', True)
   comment.hide = False
+  from .stat import record_business_event
+  record_business_event('comment.approved', {'comment_id': comment.id, 'post_id': comment.post_id})
   db.session.add(comment)
   return jsonify({ 'message': '设置成功', 'notify': True })

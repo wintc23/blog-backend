@@ -81,6 +81,11 @@ def add_message():
   msg = Message(**params)
   db.session.add(msg)
   db.session.commit()
+  from .stat import record_business_event
+  record_business_event('message.replied' if response_id else 'message.created', {
+    'message_id': msg.id,
+    'root_message_id': msg.root_response_id,
+  })
 
   # 给管理员发送邮件
   domain = current_app.config["DOMAIN"]
@@ -137,6 +142,8 @@ def delete_message(msg_id):
   msg = Message.query.get(msg_id)
   if not msg:
     return not_found('未找到该留言', True)
+  from .stat import record_business_event
+  record_business_event('message.deleted', {'message_id': msg.id, 'root_message_id': msg.root_response_id})
   db.session.delete(msg)
   return jsonify({ 'message': '留言删除成功', 'notify': True })
 
@@ -149,6 +156,7 @@ def set_message_show(msg_id):
   if not msg:
     return not_found('未找到该留言', True)
   msg.hide = False
+  from .stat import record_business_event
+  record_business_event('message.approved', {'message_id': msg.id, 'root_message_id': msg.root_response_id})
   db.session.add(msg)
   return jsonify({ 'message': '设置成功', 'notify': True })
-

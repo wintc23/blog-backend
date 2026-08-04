@@ -284,6 +284,8 @@ def like_post(post_id):
     like = Like(post_id = post_id, author = g.current_user)
     db.session.add(like)
     db.session.commit()
+    from .stat import record_business_event
+    record_business_event('post.like_created', {'post_id': post.id})
     json = { 'likes': post.likes.count() }
     json['like'] = True
     if not g.current_user.is_administrator():
@@ -311,6 +313,8 @@ def cancel_like_post(post_id):
   like = post.likes.filter_by(author = g.current_user).first()
   if not like:
     return not_found('未曾点赞')
+  from .stat import record_business_event
+  record_business_event('post.like_cancelled', {'post_id': post.id})
   db.session.delete(like)
   json = { 'likes': post.likes.count() }
   json['like'] = False
