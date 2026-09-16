@@ -6,6 +6,7 @@ import json
 import time
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from uuid import uuid4
 
 class Permission:
   FOLLOW = 1
@@ -209,6 +210,61 @@ class PostType(db.Model):
       post_type.default = data['default']
       db.session.add(post_type)
     db.session.commit()
+
+class PersonalProfile(db.Model):
+  """The site's independently managed homepage profile (single row, id=1)."""
+  __tablename__ = 'personal_profiles'
+  id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+  display_name = db.Column(db.String(128), nullable=False, default='')
+  avatar_url = db.Column(db.Text, nullable=False, default='')
+  tagline = db.Column(db.String(255), nullable=False, default='')
+  introduction = db.Column(db.String(500), nullable=False, default='')
+  bio = db.Column(db.Text, nullable=False, default='')
+  links_json = db.Column(db.Text, nullable=False, default='[]')
+  moments_json = db.Column(db.Text, nullable=True, default='[]')
+  contact_email = db.Column(db.String(254), nullable=False, default='', server_default='')
+  wechat_id = db.Column(db.String(128), nullable=False, default='', server_default='')
+  wechat_qr_url = db.Column(db.String(2048), nullable=False, default='', server_default='')
+  contact_note = db.Column(db.String(500), nullable=False, default='', server_default='')
+  updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+  def to_json(self):
+    return {
+      'id': 1,
+      'display_name': self.display_name or '',
+      'avatar_url': self.avatar_url or '',
+      'tagline': self.tagline or '',
+      'introduction': self.introduction or '',
+      'bio': self.bio or '',
+      'links': json.loads(self.links_json or '[]'),
+      'moments': json.loads(self.moments_json or '[]'),
+      'contact_email': self.contact_email or '',
+      'wechat_id': self.wechat_id or '',
+      'wechat_qr_url': self.wechat_qr_url or '',
+      'contact_note': self.contact_note or '',
+    }
+
+
+class LifeMoment(db.Model):
+  __tablename__ = 'life_moments'
+  id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+  date = db.Column(db.Date, nullable=False)
+  category = db.Column(db.String(16), nullable=False)
+  text = db.Column(db.String(280), nullable=False)
+  image_url = db.Column(db.Text, nullable=False)
+  image_alt = db.Column(db.String(120), nullable=False, default='')
+  location = db.Column(db.String(60), nullable=False, default='')
+  created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+  updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+  __table_args__ = (db.Index('ix_life_moments_chronology', 'date', 'created_at', 'id'),)
+
+  def to_json(self):
+    return {
+      'id': self.id, 'date': self.date.isoformat(), 'category': self.category,
+      'text': self.text, 'image_url': self.image_url,
+      'image_alt': self.image_alt, 'location': self.location,
+    }
+
 
 class Post(db.Model):
   __tablename__ = 'posts'

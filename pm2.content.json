@@ -1,0 +1,61 @@
+{
+  "apps": [
+    {
+      "name": "content-scheduler",
+      "cwd": "/home/lushg/blog-backend",
+      "script": "generation.py",
+      "interpreter": "/home/lushg/blog-backend/venv/bin/python",
+      "args": "scheduler --environment production",
+      "instances": 1,
+      "autorestart": true,
+      "restart_delay": 5000,
+      "kill_timeout": 10000,
+      "log_date_format": "YYYY-MM-DD HH:mm Z",
+      "env": {
+        "FLASK_CONFIG": "production",
+        "CONTENT_ENVIRONMENT": "production",
+        "CONTENT_JOBS_ENABLED": "1",
+        "CONTENT_CODEX_BIN": "/root/.nvm/versions/node/v22.22.2/bin/codex",
+        "PATH": "/home/lushg/blog-backend/venv/bin:/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    },
+    {
+      "name": "content-worker",
+      "cwd": "/home/lushg/blog-backend",
+      "script": "generation.py",
+      "interpreter": "/home/lushg/blog-backend/venv/bin/python",
+      "args": "worker --environment production",
+      "instances": 1,
+      "autorestart": true,
+      "restart_delay": 5000,
+      "kill_timeout": 10000,
+      "log_date_format": "YYYY-MM-DD HH:mm Z",
+      "env": {
+        "FLASK_CONFIG": "production",
+        "CONTENT_ENVIRONMENT": "production",
+        "CONTENT_JOBS_ENABLED": "1",
+        "CONTENT_CODEX_BIN": "/root/.nvm/versions/node/v22.22.2/bin/codex",
+        "PATH": "/home/lushg/blog-backend/venv/bin:/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    },
+    {
+      "name": "content-collector",
+      "cwd": "/home/lushg/blog-backend",
+      "script": "generation.py",
+      "interpreter": "/home/lushg/blog-backend/venv/bin/python",
+      "args": "collector --environment production",
+      "instances": 1,
+      "autorestart": true,
+      "restart_delay": 5000,
+      "kill_timeout": 10000,
+      "log_date_format": "YYYY-MM-DD HH:mm Z",
+      "env": {
+        "FLASK_CONFIG": "production",
+        "CONTENT_ENVIRONMENT": "production",
+        "CONTENT_JOBS_ENABLED": "1",
+        "CONTENT_CODEX_BIN": "/root/.nvm/versions/node/v22.22.2/bin/codex",
+        "PATH": "/home/lushg/blog-backend/venv/bin:/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  ]
+}

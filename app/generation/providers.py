@@ -1,0 +1,146 @@
+"""OpenAI-compatible HTTP adapters; credentials never enter job snapshots."""
+import base64
+import hashlib
+import json
+import os
+import struct
+import zlib
+from pathlib import Path
+from .configuration import GenerationError
+from .network import fetch
+
+
+def readiness(config, reuse_cover=False):
+    missing = []
+    for name in ('text_model', 'image_model'):
+        model = config[name]
+        if name == 'image_model' and reuse_cover:
+            continue
+        if name == 'text_model' and model.get('provider') == 'codex':
+            from .codex_provider import executable
+            if not executable():
+                missing.append('CONTENT_CODEX_BIN')
+            continue
+        for field in ('base_url', 'model'):
+            if not model[field]:
+                missing.append(name + '.' + field)
+        if not os.environ.get(model['credential_ref']):
+            missing.append(model['credential_ref'])
+    for name in (() if reuse_cover else ('QI_NIU_ACCESS_KEY', 'QI_NIU_SECRET_KEY', 'QI_NIU_BUCKET', 'QI_NIU_LINK_URL')):
+        from flask import current_app
+        if not current_app.config.get(name):
+            missing.append(name)
+    return missing
+
+
+def call(model, endpoint, payload, request_key, limit=2 * 1024 * 1024):
+    key = os.environ.get(model['credential_ref'])
+    if not key or not model['model'] or not model['base_url']:
+        raise GenerationError('provider_not_configured', '模型服务未配置完整，请检查模型、API 地址和凭据引用')
+    raw, headers = fetch(model['base_url'].rstrip('/') + endpoint, 'POST', dict(payload, model=model['model']),
+                         {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
+                          'X-Client-Request-Id': request_key}, timeout=model['timeout'], limit=limit)
+    try:
+        value = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        raise GenerationError('invalid_provider_response', '模型服务未返回有效 JSON', True)
+    if not isinstance(value, dict):
+        raise GenerationError('invalid_provider_response', '模型服务返回格式不正确', True)
+    metadata = {'model': model['model'], 'request_id': headers.get('x-request-id'), 'client_request_id': request_key,
+                'response_id': value.get('id'), 'usage': value.get('usage')}
+    return value, metadata
+
+
+def generate_text(config, system, inputs, request_key):
+    if config['text_model'].get('provider') == 'codex':
+        from .codex_provider import generate
+        return generate(config['text_model'], system, inputs, request_key)
+    value, metadata = call(config['text_model'], '/chat/completions', {
+        'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': json.dumps(inputs, ensure_ascii=False)}],
+        'response_format': {'type': 'json_object'},
+    }, request_key)
+    try:
+        choice = value['choices'][0]
+        if choice.get('finish_reason') not in (None, 'stop'):
+            raise ValueError('incomplete response')
+        document = json.loads(choice['message']['content'])
+        if not isinstance(document, dict):
+            raise ValueError('not an object')
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise GenerationError('invalid_model_json', '正文输出不完整或不符合 JSON 格式', True)
+    return document, metadata
+
+
+def png_dimensions(data):
+    if not data.startswith(b'\x89PNG\r\n\x1a\n') or len(data) > 20 * 1024 * 1024:
+        raise GenerationError('invalid_image', '图片必须是小于 20 MB 的 PNG 文件')
+    offset, width, height, ended, has_pixels = 8, 0, 0, False, False
+    while offset + 12 <= len(data):
+        length = struct.unpack('>I', data[offset:offset + 4])[0]
+        kind = data[offset + 4:offset + 8]
+        end = offset + 8 + length
+        if end + 4 > len(data) or zlib.crc32(data[offset + 4:end]) & 0xffffffff != struct.unpack('>I', data[end:end + 4])[0]:
+            raise GenerationError('invalid_image', 'PNG 文件损坏')
+        if offset == 8:
+            if kind != b'IHDR' or length != 13:
+                raise GenerationError('invalid_image', 'PNG 文件头不正确')
+            width, height = struct.unpack('>II', data[offset + 8:offset + 16])
+        if kind == b'IDAT' and length:
+            has_pixels = True
+        if kind == b'IEND':
+            ended = True
+            break
+        offset = end + 4
+    if not ended or not has_pixels or not 256 <= width <= 8192 or not 128 <= height <= 8192 or width * height > 32_000_000:
+        raise GenerationError('invalid_image', '图片尺寸不正确或文件不完整')
+    return width, height
+
+
+def artifact_root():
+    root = Path(os.environ.get('CONTENT_ASSET_DIR', str(Path(__file__).resolve().parents[2] / 'var/content-assets')))
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def generate_image(config, prompt, request_key):
+    model = config['image_model']
+    payload = {'prompt': prompt, 'n': 1, 'size': model['size']}
+    if model['response_format'] != 'auto':
+        payload['response_format'] = model['response_format']
+    value, metadata = call(model, '/images/generations', payload, request_key, limit=30 * 1024 * 1024)
+    try:
+        result = value['data'][0]
+        if result.get('b64_json'):
+            data = base64.b64decode(result['b64_json'], validate=True)
+        elif result.get('url'):
+            data, _ = fetch(result['url'], limit=20 * 1024 * 1024, timeout=60)
+        else:
+            raise ValueError('missing image')
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise GenerationError('invalid_image_response', '图片服务未返回有效图片', True)
+    width, height = png_dimensions(data)
+    digest = hashlib.sha256(data).hexdigest()
+    filename = digest + '.png'
+    path = artifact_root() / filename
+    temporary = path.with_suffix('.' + request_key + '.tmp')
+    temporary.write_bytes(data)
+    temporary.replace(path)
+    return {'filename': filename, 'sha256': digest, 'width': width, 'height': height}, metadata
+
+
+def upload_image(asset):
+    from qiniu import put_file
+    from flask import current_app
+    from ..qiniu import get_token
+    path = artifact_root() / (asset['sha256'] + '.png')
+    if not path.is_file():
+        raise GenerationError('asset_missing', '已生成图片文件缺失，请恢复资产目录后重试')
+    if hashlib.sha256(path.read_bytes()).hexdigest() != asset['sha256']:
+        raise GenerationError('asset_corrupt', '已生成图片校验失败')
+    key = 'generated-content/' + asset['sha256'] + '.png'
+    result, info = put_file(get_token(key), key, str(path), mime_type='image/png')
+    if not result or info.status_code != 200:
+        raise GenerationError('upload_failed', '图片上传七牛失败', True)
+    return {'url': current_app.config['QI_NIU_LINK_URL'].rstrip('/') + '/' + key,
+            'width': asset['width'], 'height': asset['height'], 'sha256': asset['sha256'],
+            'credit': 'AI 生成概念插图', 'rights': 'ai_generated'}
