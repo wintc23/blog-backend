@@ -332,6 +332,12 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(west_coast['published_at'], datetime(2026, 9, 17, 6, 30))
         with self.assertRaises(ValueError):
             parse_feed(b'<!DOCTYPE rss [<!ENTITY x SYSTEM "file:///secret">]><rss/>', 'https://example.com/feed')
+        # GitHub embeds HTML DOCTYPE text in CDATA; it cannot declare XML entities.
+        wrapped = feed.replace(b'<description>', b'<description><![CDATA[<!DOCTYPE html><html>')
+        wrapped = wrapped.replace(b'</description>', b'</html>]]></description>')
+        self.assertEqual(len(parse_feed(wrapped, 'https://example.com/feed')), 1)
+        with self.assertRaises(ValueError):
+            parse_feed(b'<!DOCTYPE rss [<!ENTITY x "hidden">]>' + wrapped, 'https://example.com/feed')
         atom = b'<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Old article</title><updated>2026-09-17T00:00:00Z</updated></entry></feed>'
         self.assertEqual(parse_feed(atom, 'https://example.com/feed'), [])
 
@@ -353,7 +359,7 @@ class GenerationTests(unittest.TestCase):
                 for index, (title, offset) in enumerate(titles)) + '</channel></rss>').encode()
         data = {first.endpoint_url: feed([('Model update', 10), ('Agent update', 20), ('Other update', 30)]),
                 second.endpoint_url: feed([('豆包工作发布', 40), ('手机促销', 50)])}
-        with patch('app.generation.sources.fetch', side_effect=lambda url: (data[url], {})):
+        with patch('app.generation.sources.fetch', side_effect=lambda url, **kwargs: (data[url], {})):
             result = collect(self.config, NOW)
         self.assertEqual({s['source_id'] for s in result['sources']}, {first.id, second.id})
         self.assertIsNone(AiNewsItem.query.filter_by(title='手机促销').first())

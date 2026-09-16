@@ -57,7 +57,9 @@ def canonical(url):
 
 
 def parse_feed(data, endpoint):
-    if b'<!DOCTYPE' in data.upper() or b'<!ENTITY' in data.upper():
+    # HTML declarations inside CDATA are article text, not XML declarations.
+    xml_markup = re.sub(br'<!\[CDATA\[.*?\]\]>', b'', data, flags=re.S)
+    if b'<!DOCTYPE' in xml_markup.upper() or b'<!ENTITY' in xml_markup.upper():
         raise ValueError('不支持包含实体声明的 Feed')
     try:
         root = ET.fromstring(data)
@@ -116,7 +118,10 @@ def collect(config, cutoff, capture_only=False):
     errors = []
     for feed in feeds:
         try:
-            data, _ = fetch(feed.endpoint_url)
+            data, _ = fetch(feed.endpoint_url, headers={
+                'User-Agent': 'Mozilla/5.0 (compatible; WintcNews/1.0; +https://wintc.top/ai-news)',
+                'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9',
+            })
             rows = parse_feed(data, feed.endpoint_url)
             keywords = json.loads(feed.config_json).get('title_keywords', [])
             for row in rows:

@@ -21,6 +21,8 @@ class CodexProviderTests(unittest.TestCase):
             self.assertNotIn('shell', kwargs)
             self.assertEqual(command[command.index('--sandbox') + 1], 'read-only')
             self.assertIn('features.shell_tool=false', command)
+            self.assertIn('--ignore-user-config', command)
+            self.assertIn('openai_base_url="https://provider.example/v1"', command)
             self.assertNotIn('DATABASE_URL', kwargs['env'])
             self.assertNotIn('QI_NIU_SECRET_KEY', kwargs['env'])
             schema = json.loads(Path(command[command.index('--output-schema') + 1]).read_text())
@@ -30,10 +32,19 @@ class CodexProviderTests(unittest.TestCase):
             return SimpleNamespace(returncode=0, stdout='{"type":"turn.completed","usage":{"output_tokens":10}}\n')
         with patch('app.generation.codex_provider.executable', return_value='/usr/bin/codex'), \
              patch('app.generation.codex_provider.subprocess.run', side_effect=run), \
-             patch.dict(os.environ, {'DATABASE_URL': 'private-test-value', 'QI_NIU_SECRET_KEY': 'private-test-value'}):
+             patch.dict(os.environ, {'DATABASE_URL': 'private-test-value', 'QI_NIU_SECRET_KEY': 'private-test-value',
+                                     'CONTENT_CODEX_BASE_URL': 'https://provider.example/v1'}):
             result, metadata = generate(model, 'review', {'article': 'untrusted source'}, 'request-1')
         self.assertTrue(result['passed'])
         self.assertEqual(metadata['usage']['output_tokens'], 10)
+
+    def test_provider_override_rejects_embedded_credentials(self):
+        with patch('app.generation.codex_provider.executable', return_value='/usr/bin/codex'), \
+             patch.dict(os.environ, {'CONTENT_CODEX_BASE_URL': 'https://user:secret@provider.example/v1'}), \
+             patch('app.generation.codex_provider.subprocess.run') as run:
+            with self.assertRaises(GenerationError):
+                generate({'model': '', 'timeout': 30}, 'review', {'article': ''}, 'request-1')
+            run.assert_not_called()
 
     def test_timeout_is_retryable_and_error_does_not_expose_process_output(self):
         with patch('app.generation.codex_provider.executable', return_value='/usr/bin/codex'), \

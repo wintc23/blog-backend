@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import subprocess
+from urllib.parse import urlsplit
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from .configuration import GenerationError, encode
@@ -44,6 +45,14 @@ def generate(model, system, inputs, request_key):
                    '-c', 'features.shell_tool=false', '-c', 'features.unified_exec=false',
                    '-c', 'web_search="disabled"', '-c', 'project_doc_max_bytes=0',
                    '--output-schema', str(schema), '--output-last-message', str(output)]
+        # An explicit deployment endpoint can preserve the server's existing
+        # provider without loading personal tools, MCP servers or instructions.
+        endpoint = os.environ.get('CONTENT_CODEX_BASE_URL')
+        if endpoint:
+            parsed = urlsplit(endpoint)
+            if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise GenerationError('codex_configuration', 'CONTENT_CODEX_BASE_URL 必须是无凭据的模型服务地址')
+            command += ['-c', 'openai_base_url=' + json.dumps(endpoint)]
         if model['model']:
             command += ['--model', model['model']]
         command += ['-']

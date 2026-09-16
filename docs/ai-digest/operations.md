@@ -173,3 +173,11 @@ venv/bin/python generation.py run --task-id 1 --date 2026-09-16 \
 ```
 
 重生成仍保存候选修订，检查通过后在内容管理发布。已有阅读量与旧图片保留。
+
+### 显式使用服务器现有 Codex 服务
+
+生成进程不加载个人 `config.toml`。如果服务账户通过自定义模型服务登录，需要在服务器私有环境中设置 `CONTENT_CODEX_BASE_URL`，沿用该账户已有的模型服务地址；程序将其作为 Codex 的 `openai_base_url` 显式传入，认证仍使用该账户已保存的登录。URL 不得包含密钥、用户名或密码，数据库和七牛凭据仍不会传给 Codex 子进程。
+
+### 构建与部署
+
+当前服务器内存约 3.7 GB 且承载 MySQL、API 与网站，生产构建放在开发机或 CI 完成。使用与线上一致的 Next.js 版本、`NEXT_PUBLIC_*` 和 `INTERNAL_API_BASE_URL`，设置 `NEXT_DIST_DIR=.next-release-<commit>`。上传去除 cache 的产物，校验 SHA256 后先在回环地址的临时端口检查页面和静态资源，再通过 `NEXT_DIST_DIR=... pm2 restart blog-next --update-env` 切换，并 `pm2 save`。保留上一版构建目录用于回退。
