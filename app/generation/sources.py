@@ -108,6 +108,14 @@ def title_matches(title, keywords):
                               if k.isascii() else k.casefold() in title.casefold() for k in keywords)
 
 
+def read_feed(endpoint):
+    data, _ = fetch(endpoint, headers={
+        'User-Agent': 'Mozilla/5.0 (compatible; WintcNews/1.0; +https://wintc.top/ai-news)',
+        'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9',
+    })
+    return parse_feed(data, endpoint)
+
+
 def collect(config, cutoff, capture_only=False):
     captured_at = utcnow()
     feeds = AiNewsSource.query.filter(AiNewsSource.id.in_(config['source_ids']), AiNewsSource.enabled.is_(True),
@@ -118,11 +126,7 @@ def collect(config, cutoff, capture_only=False):
     errors = []
     for feed in feeds:
         try:
-            data, _ = fetch(feed.endpoint_url, headers={
-                'User-Agent': 'Mozilla/5.0 (compatible; WintcNews/1.0; +https://wintc.top/ai-news)',
-                'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9',
-            })
-            rows = parse_feed(data, feed.endpoint_url)
+            rows = read_feed(feed.endpoint_url)
             keywords = json.loads(feed.config_json).get('title_keywords', [])
             for row in rows:
                 if not earliest <= row['published_at'] <= cutoff or not title_matches(row['title'], keywords):

@@ -18,8 +18,8 @@ from ..generation_models import (GenerationTask as Task, GenerationTaskVersion a
 from ..generation.configuration import default_config, validate_config, encode, iso, utcnow, local_day, schedule_for, GenerationError
 from ..generation import engine, providers
 from ..generation.digest import ADAPTERS
-from ..generation.network import validate_url, fetch
-from ..generation.sources import parse_feed
+from ..generation.network import validate_url
+from ..generation.sources import read_feed
 
 
 def admin(func):
@@ -247,8 +247,7 @@ def probe_generation_source(source_id):
     source = AiNewsSource.query.get(source_id)
     if not source or source.kind != 'rss':
         return not_found('RSS 来源不存在')
-    data, _ = fetch(source.endpoint_url)
-    rows = parse_feed(data, source.endpoint_url)
+    rows = read_feed(source.endpoint_url)
     return jsonify({'count': len(rows), 'latest': [{'title': r['title'], 'published_at': iso(r['published_at'])} for r in rows[:3]]})
 
 
