@@ -215,6 +215,7 @@ class PersonalProfile(db.Model):
   """The site's independently managed homepage profile (single row, id=1)."""
   __tablename__ = 'personal_profiles'
   id = db.Column(db.Integer, primary_key=True, autoincrement=False)
+  site_name = db.Column(db.String(128), nullable=False, default='', server_default='')
   display_name = db.Column(db.String(128), nullable=False, default='')
   avatar_url = db.Column(db.Text, nullable=False, default='')
   tagline = db.Column(db.String(255), nullable=False, default='')
@@ -231,6 +232,7 @@ class PersonalProfile(db.Model):
   def to_json(self):
     return {
       'id': 1,
+      'site_name': self.site_name or '',
       'display_name': self.display_name or '',
       'avatar_url': self.avatar_url or '',
       'tagline': self.tagline or '',

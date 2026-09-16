@@ -10,11 +10,11 @@ from . import api
 from .decorators import permission_required
 from .errors import bad_request
 from .. import db
-from ..models import Permission, PersonalProfile
+from ..models import Permission, PersonalProfile, Role
 
 
 FIELDS = {
-  'display_name': ('显示名称', 128),
+  'display_name': ('显示名称', 64),
   'avatar_url': ('头像地址', 2048),
   'tagline': ('一句话简介', 255),
   'introduction': ('介绍开头', 500),
@@ -104,6 +104,12 @@ def validate_profile(data):
     values[field] = value.strip()
   if not values['display_name']:
     raise ValueError('请填写显示名称')
+  # Older editors must preserve the saved site name when omitting this field.
+  if 'site_name' in data:
+    site_name = data['site_name']
+    if not isinstance(site_name, str) or not site_name.strip() or len(site_name) > 128:
+      raise ValueError('站点名称须为 1 到 128 字')
+    values['site_name'] = site_name.strip()
   if values['avatar_url'] and not valid_url(values['avatar_url']):
     raise ValueError('头像地址须使用 http 或 https')
   if values.get('wechat_qr_url') and not valid_url(values['wechat_qr_url']):
@@ -164,5 +170,10 @@ def save_personal_profile():
     setattr(profile, field, value)
   profile.updated_at = datetime.utcnow()
   db.session.add(profile)
+  # The same administrator is exposed by /get-user-info/.
+  role = Role.query.filter_by(name='Administrator').first()
+  owner = role.users.order_by('id').first() if role else None
+  if owner:
+    owner.username = values['display_name']
   db.session.commit()
   return jsonify(profile.to_json())

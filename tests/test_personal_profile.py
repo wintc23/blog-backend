@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, inspect
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app import create_app, db
-from app.models import PersonalProfile
+from app.models import PersonalProfile, Role, User
 
 
 class PersonalProfileTests(unittest.TestCase):
@@ -32,9 +32,11 @@ class PersonalProfileTests(unittest.TestCase):
     self.context = self.app.app_context()
     self.context.push()
     PersonalProfile.__table__.create(db.engine)
+    Role.__table__.create(db.engine)
+    User.__table__.create(db.engine)
     self.client = self.app.test_client()
     self.data = {
-      'display_name': '测试用户', 'avatar_url': 'https://example.com/avatar.jpg',
+      'site_name': '测试站点', 'display_name': '测试用户', 'avatar_url': 'https://example.com/avatar.jpg',
       'tagline': '测试简介', 'introduction': '介绍开头', 'bio': '第一段\n\n第二段',
       'contact_email': 'hello@example.com', 'wechat_id': 'example',
       'wechat_qr_url': 'https://example.com/qr.png', 'contact_note': '欢迎交流',
@@ -118,6 +120,25 @@ class PersonalProfileTests(unittest.TestCase):
     self.assertEqual(self.put(dict(self.data, contact_email='', wechat_id='', wechat_qr_url='', contact_note='')).status_code, 200)
     self.assertEqual(self.client.get('/api/personal-profile/').get_json()['contact_email'], '')
 
+  def test_site_name_and_owner_name_persist_without_changing_other_accounts(self):
+    role = Role(name='Administrator', permissions=31)
+    owner = User(id=1, username='原名称', role=role)
+    other = User(id=2, username='其他管理员', role=role)
+    db.session.add_all([role, owner, other])
+    db.session.commit()
+    self.assertEqual(self.put(self.data).status_code, 200)
+    db.session.remove()
+    self.assertEqual(User.query.get(1).username, self.data['display_name'])
+    self.assertEqual(User.query.get(2).username, '其他管理员')
+    legacy = {key: value for key, value in self.data.items() if key != 'site_name'}
+    self.assertEqual(self.put(legacy).status_code, 200)
+    self.assertEqual(self.client.get('/api/personal-profile/').get_json()['site_name'], '测试站点')
+    for value in ('', ' ', None, 123, '字' * 129):
+      self.assertEqual(self.put(dict(self.data, site_name=value, display_name='不应保存')).status_code, 400)
+    self.assertEqual(self.put(dict(self.data, display_name='字' * 65)).status_code, 400)
+    self.assertEqual(User.query.get(1).username, self.data['display_name'])
+    self.assertEqual(self.client.get('/api/personal-profile/').get_json(), dict(self.data, id=1))
+
   def test_life_moments_persist_sort_update_and_clear(self):
     older = {'id': str(uuid4()), 'date': '2026-09-01', 'category': 'hiking',
              'text': '沿着山路走了一下午。', 'image_url': 'https://example.com/hike.jpg',
@@ -154,7 +175,7 @@ class PersonalProfileTests(unittest.TestCase):
 class ProfileMigrationTests(unittest.TestCase):
   def test_upgrade_and_downgrade(self):
     migrations = []
-    for name in ('20260915_personal_profile', '20260915_profile_contacts', '20260916_profile_moments'):
+    for name in ('20260915_personal_profile', '20260915_profile_contacts', '20260916_profile_moments', '20260917_profile_site_name'):
       path = Path(__file__).parents[1] / ('migrations/versions/' + name + '.py')
       spec = importlib.util.spec_from_file_location(name, path)
       migration = importlib.util.module_from_spec(spec)
