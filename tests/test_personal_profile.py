@@ -38,6 +38,7 @@ class PersonalProfileTests(unittest.TestCase):
     self.data = {
       'site_name': '测试站点', 'display_name': '测试用户', 'avatar_url': 'https://example.com/avatar.jpg',
       'tagline': '测试简介', 'introduction': '介绍开头', 'bio': '第一段\n\n第二段',
+      'portfolio_introduction': '个人开发的产品与小工具。',
       'contact_email': 'hello@example.com', 'wechat_id': 'example',
       'wechat_qr_url': 'https://example.com/qr.png', 'contact_note': '欢迎交流',
       'links': [{'label': '联系', 'url': 'mailto:hello@example.com'}, {'label': '关于', 'url': '/about'}],
@@ -139,6 +140,17 @@ class PersonalProfileTests(unittest.TestCase):
     self.assertEqual(User.query.get(1).username, self.data['display_name'])
     self.assertEqual(self.client.get('/api/personal-profile/').get_json(), dict(self.data, id=1))
 
+  def test_portfolio_intro_survives_legacy_edits_and_rejects_invalid_values(self):
+    self.assertEqual(self.put(self.data).status_code, 200)
+    legacy = {key: value for key, value in self.data.items() if key != 'portfolio_introduction'}
+    self.assertEqual(self.put(legacy).status_code, 200)
+    self.assertEqual(self.client.get('/api/personal-profile/').get_json()['portfolio_introduction'], self.data['portfolio_introduction'])
+    for value in (None, 123, '字' * 501):
+      self.assertEqual(self.put(dict(self.data, portfolio_introduction=value)).status_code, 400)
+      self.assertEqual(self.client.get('/api/personal-profile/').get_json()['portfolio_introduction'], self.data['portfolio_introduction'])
+    self.assertEqual(self.put(dict(self.data, portfolio_introduction='')).status_code, 200)
+    self.assertEqual(self.client.get('/api/personal-profile/').get_json()['portfolio_introduction'], '')
+
   def test_life_moments_persist_sort_update_and_clear(self):
     older = {'id': str(uuid4()), 'date': '2026-09-01', 'category': 'hiking',
              'text': '沿着山路走了一下午。', 'image_url': 'https://example.com/hike.jpg',
@@ -175,7 +187,7 @@ class PersonalProfileTests(unittest.TestCase):
 class ProfileMigrationTests(unittest.TestCase):
   def test_upgrade_and_downgrade(self):
     migrations = []
-    for name in ('20260915_personal_profile', '20260915_profile_contacts', '20260916_profile_moments', '20260917_profile_site_name'):
+    for name in ('20260915_personal_profile', '20260915_profile_contacts', '20260916_profile_moments', '20260917_profile_site_name', '20260917_portfolio_intro'):
       path = Path(__file__).parents[1] / ('migrations/versions/' + name + '.py')
       spec = importlib.util.spec_from_file_location(name, path)
       migration = importlib.util.module_from_spec(spec)

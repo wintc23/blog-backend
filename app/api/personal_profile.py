@@ -26,6 +26,7 @@ CONTACT_FIELDS = {
   'wechat_qr_url': ('微信二维码地址', 2048),
   'contact_note': ('联系说明', 500),
 }
+SECTION_FIELDS = {'portfolio_introduction': ('作品栏目简介', 500)}
 LINK_GROUPS = ('navigation', 'community', 'education', 'work')
 LINK_ICONS = ('link', 'github', 'zhihu', 'weibo', 'youtube', 'linkedin', 'sysu', 'bytedance')
 MOMENT_CATEGORIES = ('mountain', 'hiking', 'travel', 'daily')
@@ -94,9 +95,9 @@ def validate_profile(data):
   if not isinstance(data, dict):
     raise ValueError('个人信息格式不正确')
   values = {}
-  for field, (label, limit) in {**FIELDS, **CONTACT_FIELDS}.items():
-    # Preserve new contact fields when an older editor submits its form.
-    if field in CONTACT_FIELDS and field not in data:
+  for field, (label, limit) in {**FIELDS, **CONTACT_FIELDS, **SECTION_FIELDS}.items():
+    # Older editors must preserve optional fields they do not know about.
+    if field not in FIELDS and field not in data:
       continue
     value = data.get(field, '')
     if not isinstance(value, str) or len(value) > limit:

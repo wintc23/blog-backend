@@ -221,6 +221,7 @@ class PersonalProfile(db.Model):
   tagline = db.Column(db.String(255), nullable=False, default='')
   introduction = db.Column(db.String(500), nullable=False, default='')
   bio = db.Column(db.Text, nullable=False, default='')
+  portfolio_introduction = db.Column(db.String(500), nullable=False, default='', server_default='')
   links_json = db.Column(db.Text, nullable=False, default='[]')
   moments_json = db.Column(db.Text, nullable=True, default='[]')
   contact_email = db.Column(db.String(254), nullable=False, default='', server_default='')
@@ -238,6 +239,7 @@ class PersonalProfile(db.Model):
       'tagline': self.tagline or '',
       'introduction': self.introduction or '',
       'bio': self.bio or '',
+      'portfolio_introduction': self.portfolio_introduction or '',
       'links': json.loads(self.links_json or '[]'),
       'moments': json.loads(self.moments_json or '[]'),
       'contact_email': self.contact_email or '',
