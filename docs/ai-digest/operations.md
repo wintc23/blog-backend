@@ -1,6 +1,6 @@
 # 自动生成：开发与部署
 
-实现日期：2026-09-16，Codex 配图接入更新于 2026-09-17。文字和图片生成均支持 Codex CLI 与兼容 API，历史期次可显式沿用原封面。国内及海外 RSS 已配置；启用日常生成前，需在所选图片通道完成配置并验证一次真实出图。
+实现日期：2026-09-16，CPA 配图接入更新于 2026-09-17。文字支持 Codex CLI 与兼容 API，图片另支持使用 ChatGPT 登录的 CPA。历史期次可显式沿用原封面。国内及海外 RSS 已配置；启用日常生成前，需在所选图片通道完成配置并验证一次真实出图。
 
 ## 已实现
 
@@ -31,6 +31,22 @@
 服务端的外部请求只使用 HTTPS，并检查地址、跳转、超时和响应大小。不能访问回环、内网或保留地址，带鉴权的模型请求不能跟随重定向。若本机使用会将公网域名解析为 `198.18.0.0/15` 的 Fake-IP 代理，需在部署环境使用正常公网 DNS；不能为了本地代理关闭地址校验。
 
 接口参考：[文字生成](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)、[图片生成](https://developers.openai.com/api/reference/resources/images/methods/generate)。
+
+## CPA 配图
+
+图片生成方式选择“Codex 登录（CPA）”，模型使用 `gpt-image-2.5-flare`，超时 600 秒，尺寸 `1536x1024`，返回格式选默认。任务仍保存模型、参数和服务端凭据引用；ChatGPT token 与 CPA API Key 不进入数据库。文字与事实核对继续使用原来的 Codex CLI 通道。
+
+CPA 使用官方 CLIProxyAPI 7.3.6 Linux amd64 发布包，安装时校验 SHA256。服务器的 `cliproxyapi.service` 负责开机启动与故障重启，程序在 `/opt/cliproxyapi/current`，配置在 `/etc/cliproxyapi/config.yaml`，认证在 `/var/lib/cliproxyapi/auth/`。服务以独立 `cliproxyapi` 用户运行，只监听 `127.0.0.1:8317`；管理接口、控制面板和请求正文日志关闭。认证文件权限为 0600。
+
+API 和 worker 都需注入 `CONTENT_CPA_API_KEY`，与 CPA 配置的 `api-keys` 一致。`CONTENT_CPA_BASE_URL` 默认 `http://127.0.0.1:8317/v1`，仅接受字面回环地址、显式端口与 `/v1` 路径；后台不能修改这个地址。此例外仅用于 CPA 的图片 POST 请求，禁止重定向；普通来源与兼容 API 仍执行原有公网 HTTPS 检查。
+
+CPA 7.3.6 将 GPT Image 2.5 图片请求直接发送到 ChatGPT 的 Codex 图片接口，保持所选模型名。适配器明确请求 PNG，校验文件后沿用持久化资产与七牛上传流程；如果响应明确返回其他模型，则拒绝保存，不降级到 GPT Image 2。
+
+认证可通过 CPA 的 Codex OAuth 登录建立，或从自己已有的 Codex ChatGPT 认证文件导入。导入时需转换为 CPA 的扁平 token 格式，并保留过期时间。复制 access token 只能临时验证；长期运行需要可续期的独立登录。避免本机 Codex 与服务器 CPA 同时轮换同一 refresh token，否则其中一端可能需要重新登录。不能用文字通道的普通 API Key 替代 ChatGPT OAuth。
+
+服务器还需能够访问 `chatgpt.com` 与 `auth.openai.com`。需要代理时在 CPA 私有配置中设置 `proxy-url`；不要把代理凭据写入任务或仓库。配置检查不代表网络、账号和模型已经可用，启用前必须完成真实生成与七牛上传验证。自动发布由独立开关控制。
+
+参考：[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)、[GPT Image 2.5 Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare)、[Codex 认证](https://learn.chatgpt.com/docs/auth)。
 
 ## Codex CLI
 

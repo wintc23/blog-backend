@@ -1,5 +1,6 @@
 """Bounded HTTPS requests. No redirects carrying provider credentials."""
 import ipaddress
+import os
 import socket
 import time
 from urllib.parse import urlsplit, urljoin
@@ -33,12 +34,35 @@ def validate_url(url, resolve=True):
 
 
 def fetch(url, method='GET', payload=None, headers=None, timeout=30, limit=3 * 1024 * 1024):
+    return _fetch(url, method, payload, headers, timeout, limit, validate_url)
+
+
+def cpa_image_url():
+    """Only the deployment environment can select this local image service."""
+    base = os.environ.get('CONTENT_CPA_BASE_URL', 'http://127.0.0.1:8317/v1').rstrip('/')
+    parsed = urlsplit(base)
+    if (parsed.scheme != 'http' or parsed.hostname != '127.0.0.1'
+            or parsed.username or parsed.password or parsed.query or parsed.fragment
+            or parsed.path != '/v1' or not parsed.port):
+        raise ValueError('CONTENT_CPA_BASE_URL 必须是 http://127.0.0.1:端口/v1')
+    return base + '/images/generations'
+
+
+def fetch_cpa_image(payload, headers, timeout, limit):
+    url = cpa_image_url()
+    def validate_local(target):
+        if target != url:
+            raise ValueError('CPA 只能访问已配置的本机图片接口')
+    return _fetch(url, 'POST', payload, headers, timeout, limit, validate_local)
+
+
+def _fetch(url, method, payload, headers, timeout, limit, validator):
     started = time.monotonic()
     session = requests.Session()
     session.trust_env = False
     try:
         for redirect in range(4):
-            validate_url(url)
+            validator(url)
             with session.request(method, url, json=payload, headers=headers, timeout=(10, timeout),
                                  stream=True, allow_redirects=False) as response:
                 if response.is_redirect:

@@ -115,7 +115,7 @@ def validate_config(raw):
         allowed = set(default_config()[key])
         if not isinstance(model, dict) or set(model) != allowed:
             raise ValueError('模型配置字段不完整')
-        if model['provider'] not in ('openai_compatible', 'codex'):
+        if model['provider'] not in (('openai_compatible', 'codex', 'cpa') if key == 'image_model' else ('openai_compatible', 'codex')):
             raise ValueError('生成方式不正确')
         if not all(isinstance(model[k], str) and len(model[k]) <= 500 for k in ('base_url', 'model', 'credential_ref')):
             raise ValueError('模型配置不正确')
@@ -123,6 +123,8 @@ def validate_config(raw):
             raise ValueError('凭据引用必须为 CONTENT_ 开头、_KEY 结尾的环境变量名')
         if type(model['timeout']) is not int or not 30 <= model['timeout'] <= 600:
             raise ValueError('模型超时应在 30–600 秒之间')
+        if model['provider'] == 'cpa' and model['base_url']:
+            raise ValueError('CPA 地址由服务器配置，任务中请留空')
         if model['base_url']:
             from .network import validate_url
             validate_url(model['base_url'], resolve=False)

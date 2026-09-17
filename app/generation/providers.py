@@ -7,7 +7,7 @@ import struct
 import zlib
 from pathlib import Path
 from .configuration import GenerationError
-from .network import fetch
+from .network import fetch, fetch_cpa_image, cpa_image_url
 
 
 def readiness(config, reuse_cover=False):
@@ -25,7 +25,12 @@ def readiness(config, reuse_cover=False):
                 if not image_login_ready():
                     missing.append('CONTENT_IMAGE_CODEX_LOGIN')
             continue
-        for field in ('base_url', 'model'):
+        if model.get('provider') == 'cpa':
+            try:
+                cpa_image_url()
+            except ValueError:
+                missing.append('CONTENT_CPA_BASE_URL')
+        for field in (('model',) if model.get('provider') == 'cpa' else ('base_url', 'model')):
             if not model[field]:
                 missing.append(name + '.' + field)
         if not os.environ.get(model['credential_ref']):
@@ -39,19 +44,34 @@ def readiness(config, reuse_cover=False):
 
 def call(model, endpoint, payload, request_key, limit=2 * 1024 * 1024):
     key = os.environ.get(model['credential_ref'])
-    if not key or not model['model'] or not model['base_url']:
+    is_cpa = model.get('provider') == 'cpa'
+    if not key or not model['model'] or (not is_cpa and not model['base_url']):
         raise GenerationError('provider_not_configured', '模型服务未配置完整，请检查模型、API 地址和凭据引用')
-    raw, headers = fetch(model['base_url'].rstrip('/') + endpoint, 'POST', dict(payload, model=model['model']),
-                         {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
-                          'X-Client-Request-Id': request_key}, timeout=model['timeout'], limit=limit)
+    request_headers = {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Client-Request-Id': request_key}
+    payload = dict(payload, model=model['model'])
+    if is_cpa:
+        if endpoint != '/images/generations' or model['base_url']:
+            raise GenerationError('provider_not_configured', 'CPA 仅支持服务端配置的图片生成接口')
+        try:
+            raw, headers = fetch_cpa_image(payload, request_headers, model['timeout'], limit)
+        except ValueError:
+            raise GenerationError('provider_not_configured', '请检查服务器 CONTENT_CPA_BASE_URL 配置')
+    else:
+        raw, headers = fetch(model['base_url'].rstrip('/') + endpoint, 'POST', payload, request_headers,
+                             timeout=model['timeout'], limit=limit)
     try:
         value = json.loads(raw)
     except (ValueError, UnicodeDecodeError):
         raise GenerationError('invalid_provider_response', '模型服务未返回有效 JSON', True)
     if not isinstance(value, dict):
         raise GenerationError('invalid_provider_response', '模型服务返回格式不正确', True)
+    returned_model = value.get('model')
+    if is_cpa and returned_model and returned_model != model['model'] and not str(returned_model).startswith(model['model'] + '-'):
+        raise GenerationError('image_model_mismatch', '图片服务返回的模型与任务配置不一致')
     metadata = {'model': model['model'], 'request_id': headers.get('x-request-id'), 'client_request_id': request_key,
-                'response_id': value.get('id'), 'usage': value.get('usage')}
+                'response_id': value.get('id'), 'usage': value.get('usage'), 'provider': model.get('provider', 'openai_compatible')}
+    if returned_model:
+        metadata['returned_model'] = returned_model
     return value, metadata
 
 
@@ -113,6 +133,8 @@ def generate_image(config, prompt, request_key):
         data, metadata = codex_image(model, prompt, request_key)
         return save_image(data, request_key), metadata
     payload = {'prompt': prompt, 'n': 1, 'size': model['size']}
+    if model.get('provider') == 'cpa':
+        payload['output_format'] = 'png'
     if model['response_format'] != 'auto':
         payload['response_format'] = model['response_format']
     value, metadata = call(model, '/images/generations', payload, request_key, limit=30 * 1024 * 1024)
