@@ -73,7 +73,7 @@ def default_config():
         'prompt': EDITORIAL_PROMPT,
         'image_prompt': '蓝白主色，明亮、清晰、有活力的横向编辑插图。围绕本期主要事件选用独特构图，不重复近期封面，不写文字、日期或商标。',
         'text_model': {'provider': 'openai_compatible', 'base_url': '', 'model': '', 'credential_ref': 'CONTENT_TEXT_API_KEY', 'timeout': 180},
-        'image_model': {'base_url': '', 'model': '', 'credential_ref': 'CONTENT_IMAGE_API_KEY', 'timeout': 300,
+        'image_model': {'provider': 'openai_compatible', 'base_url': '', 'model': '', 'credential_ref': 'CONTENT_IMAGE_API_KEY', 'timeout': 300,
                         'size': '1536x1024', 'response_format': 'auto'},
     }
 
@@ -109,14 +109,14 @@ def validate_config(raw):
             raise ValueError('提示词不能为空，且最多 10000 字')
     for key in ('text_model', 'image_model'):
         model = result[key]
-        if key == 'text_model' and isinstance(model, dict):
+        if isinstance(model, dict):
             model = dict({'provider': 'openai_compatible'}, **model)
             result[key] = model
         allowed = set(default_config()[key])
         if not isinstance(model, dict) or set(model) != allowed:
             raise ValueError('模型配置字段不完整')
-        if key == 'text_model' and model['provider'] not in ('openai_compatible', 'codex'):
-            raise ValueError('文字生成方式不正确')
+        if model['provider'] not in ('openai_compatible', 'codex'):
+            raise ValueError('生成方式不正确')
         if not all(isinstance(model[k], str) and len(model[k]) <= 500 for k in ('base_url', 'model', 'credential_ref')):
             raise ValueError('模型配置不正确')
         if not re.fullmatch(r'CONTENT_[A-Z0-9_]+_KEY', model['credential_ref']):

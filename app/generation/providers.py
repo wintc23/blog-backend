@@ -16,10 +16,14 @@ def readiness(config, reuse_cover=False):
         model = config[name]
         if name == 'image_model' and reuse_cover:
             continue
-        if name == 'text_model' and model.get('provider') == 'codex':
+        if model.get('provider') == 'codex':
             from .codex_provider import executable
             if not executable():
                 missing.append('CONTENT_CODEX_BIN')
+            if name == 'image_model':
+                from .codex_provider import image_login_ready
+                if not image_login_ready():
+                    missing.append('CONTENT_IMAGE_CODEX_LOGIN')
             continue
         for field in ('base_url', 'model'):
             if not model[field]:
@@ -104,6 +108,10 @@ def artifact_root():
 
 def generate_image(config, prompt, request_key):
     model = config['image_model']
+    if model.get('provider') == 'codex':
+        from .codex_provider import generate_image as codex_image
+        data, metadata = codex_image(model, prompt, request_key)
+        return save_image(data, request_key), metadata
     payload = {'prompt': prompt, 'n': 1, 'size': model['size']}
     if model['response_format'] != 'auto':
         payload['response_format'] = model['response_format']
@@ -118,6 +126,10 @@ def generate_image(config, prompt, request_key):
             raise ValueError('missing image')
     except (ValueError, KeyError, IndexError, TypeError):
         raise GenerationError('invalid_image_response', '图片服务未返回有效图片', True)
+    return save_image(data, request_key), metadata
+
+
+def save_image(data, request_key):
     width, height = png_dimensions(data)
     digest = hashlib.sha256(data).hexdigest()
     filename = digest + '.png'
@@ -125,7 +137,7 @@ def generate_image(config, prompt, request_key):
     temporary = path.with_suffix('.' + request_key + '.tmp')
     temporary.write_bytes(data)
     temporary.replace(path)
-    return {'filename': filename, 'sha256': digest, 'width': width, 'height': height}, metadata
+    return {'filename': filename, 'sha256': digest, 'width': width, 'height': height}
 
 
 def upload_image(asset):

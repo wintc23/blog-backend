@@ -1,6 +1,6 @@
 # 自动生成：开发与部署
 
-实现日期：2026-09-16。任务代码和后台页面已完成，默认任务停用。文字生成支持 Codex CLI 与兼容 API；图片支持兼容 API，历史期次可显式沿用原封面。国内及海外 RSS 已配置，日常自动生成仍需配置图片服务。
+实现日期：2026-09-16，Codex 配图接入更新于 2026-09-17。文字和图片生成均支持 Codex CLI 与兼容 API，历史期次可显式沿用原封面。国内及海外 RSS 已配置；启用日常生成前，需在所选图片通道完成配置并验证一次真实出图。
 
 ## 已实现
 
@@ -22,7 +22,7 @@
 1. 在“资料来源”添加官方 RSS / Atom HTTPS 地址，点击“测试来源”。Feed 条目必须有明确的原文发布日期／时间和足够的正文／摘要；不会把 Atom 的 updated 时间当成原始发布日期。
 2. 在任务中选择来源，配置两组模型：
    - 文字服务：选择 Codex CLI（使用当前服务账户的登录）或兼容 `POST /chat/completions` 的 API。
-   - 图片服务：兼容 `POST /images/generations`，返回 PNG 的 `b64_json` 或 HTTPS 图片 URL。
+   - 图片服务：Codex 内置图片工具，或兼容 `POST /images/generations` 的 API。Codex 配图需要独立的 ChatGPT 登录；API 返回 PNG 的 `b64_json` 或 HTTPS 图片 URL。
    - API 地址应包含供应商 API 前缀，例如 `/v1`；模型名必须填写实际可用名称。
 3. 密钥部署到服务器环境中，默认引用 `CONTENT_TEXT_API_KEY` 和 `CONTENT_IMAGE_API_KEY`。可用不同供应商；其他凭据引用需符合 `CONTENT_*_KEY` 命名。
 4. 生成时间默认 08:30，计划发布时间默认 09:00，时区固定 Asia/Shanghai；允许延迟 180 分钟，失败最多自动重试三次。
@@ -39,6 +39,18 @@
 正文和事实核对分别调用 `codex exec`，通过 stdin 传入资料、`--output-schema` 约束 JSON 输出，使用临时目录、只读模式、关闭命令工具和网页搜索。子进程不继承数据库与七牛凭据。CLI 会读取服务账户已保存的认证；部署到新服务器后须独立完成登录。本模块不加载个人 config.toml；模型以任务配置为准。
 
 官方说明：[Codex 非交互模式](https://learn.chatgpt.com/docs/non-interactive-mode)。
+
+### Codex 内置配图
+
+后台图片生成方式选择“Codex CLI”。配置 `CONTENT_IMAGE_CODEX_HOME` 指向独立的绝对目录（服务器为 `/root/.codex-content-images`），并在该目录完成支持图片生成的 ChatGPT 账号登录。API 与 worker 都需要读取此环境变量。目录只允许服务账户访问，凭据不进入数据库或代码仓库。
+
+Codex CLI 0.154.0 的内置 `image_gen.imagegen` 会检查 Codex 后端认证；普通 API Key 登录不能直接获得这一工具。仅安装 imagegen 技能或打开功能开关不能代替账号授权。远程服务器可采用[设备码登录或 SSH 回调登录](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)。图片进程不继承文字通道的 API Key 和自定义模型地址，也不读取个人工具配置。
+
+图片配置中的模型名是调用图片工具的 Codex 调度模型，可留空使用 CLI 默认值；实际图片模型由 Codex 内置工具管理。期望图片尺寸写入画面要求，保存尺寸以返回 PNG 为准。正文和事实核对继续使用原有文字账号。
+
+一次调用只请求一张图片。适配器根据 CLI 返回的会话编号，从对应 `generated_images/<thread_id>/` 读取新图片；不采信模型文本中的任意路径，不采用其他会话的图片，不使用代码绘图兜底。PNG 完整性与大小校验通过后，图片复制到持久化资产目录，沿用七牛上传与重试机制。
+
+启用前先验证账号权限、网络连接、生成和上传成功。缺少登录时，后台提示“Codex 配图账号登录”，不会创建任务；仅通过文件配置检查不等同于真实出图成功。自动发布仍由独立开关控制。
 
 ## 阅读分区与兼容
 

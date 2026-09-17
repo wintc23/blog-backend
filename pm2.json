@@ -7,7 +7,8 @@
     "env": {
       "PATH": "/home/lushg/blog-backend/venv/bin:/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin",
       "CODEX_COMMAND": "/root/.nvm/versions/node/v22.22.2/bin/codex",
-      "CODEX_TIMEOUT": "170"
+      "CODEX_TIMEOUT": "170",
+      "CONTENT_IMAGE_CODEX_HOME": "/root/.codex-content-images"
     }
   }]
 }
