@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app import create_app, db
-from app.digest_models import AiDigest, AiNewsItem, AiNewsSource
+from app.digest_models import AiDigest, AiDigestSettings, AiNewsItem, AiNewsSource
 
 
 def migration(name='20260916_ai_digest'):
@@ -86,6 +86,49 @@ class DigestTests(unittest.TestCase):
     def test_pagination_validation(self):
         for query in ('page=0', 'page=bad', 'per_page=999'):
             self.assertEqual(self.client.get('/api/ai-digests/?' + query).status_code, 400)
+
+    def channel(self):
+        row = AiDigestSettings(id=1, title='栏目', preferences_json=json.dumps({'private_note': 'editor only'}),
+            generator_json='{}', prompt_template='private prompt', updated_at=datetime.utcnow())
+        db.session.add(row)
+        db.session.commit()
+        return row
+
+    def introduction(self):
+        return {'summary': '每日整理。', 'note': '附原始来源。', 'groups': [
+            {'id': 'applications', 'title': '应用', 'description': '新功能。'},
+            {'id': 'development', 'title': '开发', 'description': '模型进展。'}]}
+
+    def test_channel_copy_is_admin_managed_and_public_projection_is_safe(self):
+        row = self.channel()
+        before = (row.prompt_template, row.publish_time, row.auto_publish)
+        path = '/api/generation/channel/'
+        payload = {'title': '新栏目名称', 'introduction': self.introduction()}
+        for method in (self.client.get, self.client.put):
+            self.assertEqual(method(path, json=payload).status_code, 401)
+            self.assertEqual(method(path, json=payload, headers={'X-Test-Role': 'user'}).status_code, 403)
+        response = self.client.put(path, json=payload, headers={'X-Test-Role': 'admin'})
+        self.assertEqual(response.status_code, 200)
+        for endpoint in ('/api/ai-digests/home/', '/api/ai-digests/'):
+            settings = self.client.get(endpoint).get_json()['settings']
+            self.assertEqual(settings['introduction'], payload['introduction'])
+            self.assertEqual(settings['title'], payload['title'])
+            self.assertEqual(set(settings), {'title', 'timezone', 'publish_time', 'introduction'})
+        row = AiDigestSettings.query.get(1)
+        self.assertEqual(json.loads(row.preferences_json)['private_note'], 'editor only')
+        self.assertEqual((row.prompt_template, row.publish_time, row.auto_publish), before)
+
+    def test_invalid_channel_copy_does_not_modify_saved_settings(self):
+        row = self.channel()
+        self.assertIsNone(self.client.get('/api/ai-digests/home/').get_json()['settings']['introduction'])
+        invalid = [None, {'summary': 'x', 'note': '', 'groups': []}, self.introduction()]
+        invalid[-1]['summary'] = 'x' * 201
+        for introduction in invalid:
+            response = self.client.put('/api/generation/channel/', json={'title': 'changed', 'introduction': introduction}, headers={'X-Test-Role': 'admin'})
+            self.assertEqual(response.status_code, 400)
+        row = AiDigestSettings.query.get(1)
+        self.assertEqual(row.title, '栏目')
+        self.assertEqual(json.loads(row.preferences_json), {'private_note': 'editor only'})
 
     def test_get_requests_and_prefetch_never_count_reads(self):
         digest_id = self.issue(date(2026, 9, 16), 'published').id

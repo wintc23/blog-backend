@@ -12,6 +12,7 @@ from .errors import bad_request, not_found
 from .. import db
 from ..models import Permission
 from ..digest_models import AiNewsSource, AiDigest, AiDigestSettings
+from ..digest_settings import public_settings, validate_introduction
 from ..generation_models import (GenerationTask as Task, GenerationTaskVersion as Version,
     GenerationJob as Job, GenerationRun as Run, GeneratedContent as Content, ContentRevision as Revision,
     GenerationHeartbeat)
@@ -93,6 +94,28 @@ def content_json(content, full=False):
             'job_id': Run.query.get(r.run_id).job_id if r.run_id else None,
             'created_at': iso(r.created_at), 'validated': r.validated} for r in Revision.query.filter_by(content_id=content.id).order_by(Revision.revision.desc()).all()]
     return result
+
+
+@api.route('/generation/channel/', methods=['GET', 'PUT'])
+@admin
+def generation_channel():
+    if request.method == 'GET':
+        return jsonify(public_settings(AiDigestSettings.query.get(1)))
+    data = body()
+    title = data.get('title')
+    if not isinstance(title, str) or not title.strip() or len(title) > 128:
+        raise ValueError('栏目名称须为 1 到 128 字')
+    introduction = validate_introduction(data.get('introduction'))
+    settings = AiDigestSettings.query.filter_by(id=1).with_for_update().first()
+    if not settings:
+        return not_found('请先初始化栏目配置')
+    preferences = json.loads(settings.preferences_json)
+    preferences['introduction'] = introduction
+    settings.preferences_json = encode(preferences)
+    settings.title = title.strip()
+    settings.updated_at = utcnow()
+    db.session.commit()
+    return jsonify(public_settings(settings))
 
 
 @api.route('/generation/meta/')

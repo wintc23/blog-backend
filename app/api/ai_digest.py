@@ -8,6 +8,7 @@ from .errors import bad_request, forbidden, not_found, unauthorized
 from .. import db
 from ..models import Permission
 from ..digest_models import AiDigest, AiDigestSettings, AiNewsItem, AiNewsSource
+from ..digest_settings import public_settings
 
 
 def _admin():
@@ -32,9 +33,7 @@ def _public_query(now=None):
 
 
 def _settings():
-    settings = AiDigestSettings.query.get(1)
-    return {'title': settings.title, 'timezone': settings.timezone,
-            'publish_time': settings.publish_time.strftime('%H:%M')} if settings else None
+    return public_settings(AiDigestSettings.query.get(1))
 
 
 def serialize_digest(digest, full=False, channel_title=None):
