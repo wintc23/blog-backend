@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch the shared server Codex credential
+
+[Path]
+PathChanged=/root/.codex/auth.json
+Unit=cliproxyapi-codex-sync.service
+
+[Install]
+WantedBy=multi-user.target

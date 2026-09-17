@@ -1,0 +1,15 @@
+[Unit]
+Description=Synchronize existing Codex API credentials to CPA
+After=cliproxyapi.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/cliproxyapi-sync-codex.py --restart
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadOnlyPaths=/root/.codex
+ReadWritePaths=/etc/cliproxyapi
+
+[Install]
+WantedBy=multi-user.target

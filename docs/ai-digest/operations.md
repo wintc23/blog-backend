@@ -1,6 +1,6 @@
 # 自动生成：开发与部署
 
-实现日期：2026-09-16，CPA 配图接入更新于 2026-09-17。文字支持 Codex CLI 与兼容 API，图片另支持使用 ChatGPT 登录的 CPA。历史期次可显式沿用原封面。国内及海外 RSS 已配置；启用日常生成前，需在所选图片通道完成配置并验证一次真实出图。
+实现日期：2026-09-16，CPA 配图接入更新于 2026-09-17。文字支持 Codex CLI 与兼容 API，图片另支持复用服务器 Codex 凭据的 CPA。历史期次可显式沿用原封面。国内及海外 RSS 已配置；启用日常生成前，需在所选图片通道完成配置并验证一次真实出图。
 
 ## 已实现
 
@@ -34,17 +34,26 @@
 
 ## CPA 配图
 
-图片生成方式选择“Codex 登录（CPA）”，模型使用 `gpt-image-2.5-flare`，超时 600 秒，尺寸 `1536x1024`，返回格式选默认。任务仍保存模型、参数和服务端凭据引用；ChatGPT token 与 CPA API Key 不进入数据库。文字与事实核对继续使用原来的 Codex CLI 通道。
+图片生成方式选择“Codex 登录（CPA）”，模型使用 `gpt-image-2.5-flare`，超时 600 秒，尺寸 `1536x1024`，返回格式选默认。任务仍保存模型、参数和服务端凭据引用；模型服务 Key 与 CPA API Key 不进入数据库。文字与事实核对继续使用原来的 Codex CLI 通道。
 
 CPA 使用官方 CLIProxyAPI 7.3.6 Linux amd64 发布包，安装时校验 SHA256。服务器的 `cliproxyapi.service` 负责开机启动与故障重启，程序在 `/opt/cliproxyapi/current`，配置在 `/etc/cliproxyapi/config.yaml`，认证在 `/var/lib/cliproxyapi/auth/`。服务以独立 `cliproxyapi` 用户运行，只监听 `127.0.0.1:8317`；管理接口、控制面板和请求正文日志关闭。认证文件权限为 0600。
 
 API 和 worker 都需注入 `CONTENT_CPA_API_KEY`，与 CPA 配置的 `api-keys` 一致。`CONTENT_CPA_BASE_URL` 默认 `http://127.0.0.1:8317/v1`，仅接受字面回环地址、显式端口与 `/v1` 路径；后台不能修改这个地址。此例外仅用于 CPA 的图片 POST 请求，禁止重定向；普通来源与兼容 API 仍执行原有公网 HTTPS 检查。
 
-CPA 7.3.6 将 GPT Image 2.5 图片请求直接发送到 ChatGPT 的 Codex 图片接口，保持所选模型名。适配器明确请求 PNG，校验文件后沿用持久化资产与七牛上传流程；如果响应明确返回其他模型，则拒绝保存，不降级到 GPT Image 2。
+当前服务器 Codex 使用 API Key 登录，原有模型服务已经提供 GPT Image 2.5。CPA 的 `openai-compatibility` 中配置 `server-codex`，复用 `/root/.codex/auth.json` 的 `OPENAI_API_KEY` 与文字通道的 `CONTENT_CODEX_BASE_URL`，模型声明 `image: true`。这条线路已在服务器独立完成生成、PNG 校验和七牛上传，无需本机代理或另一个 ChatGPT 登录。适配器保持所选模型名；如果响应明确返回其他模型，则拒绝保存，不降级到 GPT Image 2。
 
-认证可通过 CPA 的 Codex OAuth 登录建立，或从自己已有的 Codex ChatGPT 认证文件导入。导入时需转换为 CPA 的扁平 token 格式，并保留过期时间。复制 access token 只能临时验证；长期运行需要可续期的独立登录。避免本机 Codex 与服务器 CPA 同时轮换同一 refresh token，否则其中一端可能需要重新登录。不能用文字通道的普通 API Key 替代 ChatGPT OAuth。
+`scripts/sync_cpa_codex.py` 将服务器 Codex 的 Key 同步到 CPA 私有配置，不修改原认证文件。配置文件采用 JSON（兼容 YAML）格式；`ops/cpa/cliproxyapi-codex-sync.service` 在开机时同步，配套 `.path` 监听认证文件变化。Key 变化时原子替换 CPA 配置并重启 CPA，保留文件属主与受限权限；退出 Codex 登录或切换为无法用于此通道的 OAuth 登录时，禁用该路由并移除旧 Key。模型地址变更时需同时更新文字通道和 CPA 的服务地址。
 
-服务器还需能够访问 `chatgpt.com` 与 `auth.openai.com`。需要代理时在 CPA 私有配置中设置 `proxy-url`；不要把代理凭据写入任务或仓库。配置检查不代表网络、账号和模型已经可用，启用前必须完成真实生成与七牛上传验证。自动发布由独立开关控制。
+部署同步组件：
+
+```bash
+install -m 0755 scripts/sync_cpa_codex.py /usr/local/sbin/cliproxyapi-sync-codex.py
+install -m 0644 ops/cpa/cliproxyapi-codex-sync.service ops/cpa/cliproxyapi-codex-sync.path /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now cliproxyapi-codex-sync.service cliproxyapi-codex-sync.path
+```
+
+CPA 也支持直接使用 ChatGPT OAuth；这与当前部署的 API Key 通道是两种方式。OAuth 方式才需要服务器连通 `chatgpt.com` 与 `auth.openai.com`，并处理登录令牌续期。不要仅凭 Codex 内置图片工具无法使用 API Key，就推断同一模型服务的图片接口也不可用。配置检查不代表真实出图成功，启用前应验证实际生成与上传。自动发布由独立开关控制。
 
 参考：[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)、[GPT Image 2.5 Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare)、[Codex 认证](https://learn.chatgpt.com/docs/auth)。
 
