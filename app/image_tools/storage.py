@@ -5,6 +5,7 @@ from uuid import uuid4
 from PIL import Image, ImageOps, UnidentifiedImageError
 from .. import db
 from . import cloud
+from .policy import upload_policy, HARD_BYTES, HARD_PIXELS, MAX_EDGE
 from ..image_tool_models import ImageToolAsset
 
 MAX_BYTES = 20 * 1024 * 1024
@@ -16,25 +17,38 @@ def key(asset, original=False):
 
 
 def read(asset, original=False):
-    return cloud.read(key(asset, original), MAX_BYTES if original else 80 * 1024 * 1024)
+    return cloud.read(key(asset, original), HARD_BYTES if original else 80 * 1024 * 1024)
 
 
-def store(task_id, data, filename, kind='input', position=0, asset_id=None, original_uploaded=False):
-    if not data or len(data) > MAX_BYTES:
-        raise ValueError('每张图片最大 20 MB')
+def store(task_id, data, filename, kind='input', position=0, asset_id=None, original_uploaded=False, policy=None):
+    policy = policy or upload_policy()
+    max_bytes = min(policy['max_bytes'], HARD_BYTES) if kind == 'input' else MAX_BYTES
+    max_pixels = min(policy['max_pixels'], HARD_PIXELS) if kind == 'input' else MAX_PIXELS
+    if not data or len(data) > max_bytes:
+        raise ValueError('图片超过上传配置，请重新选择以自动优化')
     try:
         with warnings.catch_warnings():
             warnings.simplefilter('error', Image.DecompressionBombWarning)
             with Image.open(io.BytesIO(data), formats=['JPEG', 'PNG', 'WEBP']) as source:
-                if source.width * source.height > MAX_PIXELS or max(source.size) > 16000 or getattr(source, 'n_frames', 1) != 1:
-                    raise ValueError('请上传不超过 4000 万像素的静态图片')
-                source.load()
+                if source.width * source.height > max_pixels or max(source.size) > MAX_EDGE or getattr(source, 'n_frames', 1) != 1:
+                    raise ValueError('图片尺寸超过上传配置或不是静态图片，请重新选择以自动优化')
                 extension = {'JPEG': 'jpg', 'PNG': 'png', 'WEBP': 'webp'}[source.format]
-                picture = ImageOps.exif_transpose(source).convert('RGBA' if 'A' in source.getbands() else 'RGB')
+                edge = min(policy['processing_max_edge'], 4096)
+                if kind == 'input':
+                    source.draft(source.mode, (edge, edge))
+                source.load()
+                ImageOps.exif_transpose(source, in_place=True)
+                if kind == 'input':
+                    source.thumbnail((edge, edge), Image.Resampling.LANCZOS)
+                picture = source.convert('RGBA' if 'A' in source.getbands() or 'transparency' in source.info else 'RGB')
                 clean = Image.new(picture.mode, picture.size)
                 clean.paste(picture)
                 output = io.BytesIO()
                 clean.save(output, 'PNG')
+                # Input copies sent to the model are also bounded by encoded bytes.
+                while kind == 'input' and output.tell() > MAX_BYTES and min(clean.size) > 1:
+                    clean = clean.resize((max(1, int(clean.width * .8)), max(1, int(clean.height * .8))), Image.Resampling.LANCZOS)
+                    output = io.BytesIO(); clean.save(output, 'PNG')
         if output.tell() > 80 * 1024 * 1024:
             raise ValueError('图片解码后过大，请降低分辨率')
     except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError, Image.DecompressionBombWarning):

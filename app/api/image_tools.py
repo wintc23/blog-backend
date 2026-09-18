@@ -20,6 +20,7 @@ from ..image_tool_models import ImageTool, ImageTask, ImageToolAsset, ImageToolI
 from ..image_tools.config import encode, public_config, validate_config, validate_options
 from ..image_tools import storage, provider
 from ..image_tools.telemetry import record
+from ..image_tools.policy import upload_policy
 
 
 class ToolError(ValueError):
@@ -100,7 +101,8 @@ def task_json(task):
 
 def settings_json():
     limits = ImageToolSettings.query.get(1)
-    return dict(version=limits.version, global_per_minute=limits.global_per_minute, user_per_hour=limits.user_per_hour)
+    return dict(version=limits.version, global_per_minute=limits.global_per_minute, user_per_hour=limits.user_per_hour,
+                upload_max_mb=limits.upload_max_mb, upload_max_megapixels=limits.upload_max_megapixels, processing_max_edge=limits.processing_max_edge)
 
 
 def quota_for(user):
@@ -134,6 +136,12 @@ def reserve_quota(task, count):
             raise ToolError('当前网络的游客生成额度已用完，请稍后再试或登录正式账号', 429,
                             int(limited.headers.get('Retry-After', 3600)))
 
+
+
+@api.route('/image-tools/upload-policy/')
+@endpoint
+def image_upload_policy():
+    return jsonify(upload_policy())
 
 
 @api.route('/image-tools/')
@@ -258,13 +266,14 @@ def upload_into(task):
         limited = consume_limits(str(task.owner_id), [('image-tool-upload', 100, 3600)])
         if limited is not None:
             return limited
+        policy = upload_policy()
         size, mime, name = data.get('size'), data.get('mime'), data.get('name')
-        if type(size) is not int or not 0 < size <= storage.MAX_BYTES or mime not in ('image/jpeg', 'image/png', 'image/webp') or not isinstance(name, str):
-            raise ToolError('请上传不超过 20 MB 的 JPG、PNG 或 WebP 图片')
+        if type(size) is not int or not 0 < size <= policy['max_bytes'] or mime not in ('image/jpeg', 'image/png', 'image/webp') or not isinstance(name, str):
+            raise ToolError('上传限制已更新，请重新选择图片以自动优化后上传')
         asset_id = uuid4().hex
         key = storage.cloud.PREFIX + asset_id + '.original'
         token = storage.cloud.upload_token(key, size, mime)
-        ticket = signer().dumps(dict(scope='cloud-upload', task=task.id, asset=asset_id, name=name[:180]))
+        ticket = signer().dumps(dict(scope='cloud-upload', task=task.id, asset=asset_id, name=name[:180], policy=policy))
         db.session.commit()
         host = storage.cloud.setting('IMAGE_TOOLS_QINIU_UPLOAD_URL')
         if not host or not host.startswith('https://'):
@@ -283,8 +292,8 @@ def upload_into(task):
         return jsonify(id=existing.id, name=existing.name), 201
     if len(assets) >= config['max_images']:
         raise ToolError('此任务最多上传 {} 张图片'.format(config['max_images']))
-    raw = storage.cloud.read(storage.cloud.PREFIX + value['asset'] + '.original', storage.MAX_BYTES)
-    asset = storage.store(task.id, raw, value['name'], position=len(assets), asset_id=value['asset'], original_uploaded=True)
+    raw = storage.cloud.read(storage.cloud.PREFIX + value['asset'] + '.original', value.get('policy', upload_policy())['max_bytes'])
+    asset = storage.store(task.id, raw, value['name'], position=len(assets), asset_id=value['asset'], original_uploaded=True, policy=value.get('policy'))
     task.updated_at = datetime.utcnow()
     record('upload_complete', task, count=1, source='phone' if request.headers.get('X-Image-Upload-Token') else 'local')
     db.session.commit()
@@ -509,6 +518,11 @@ def image_tool_limits():
             number = data.get(name)
             if type(number) is not int or not 1 <= number <= 10000:
                 raise ToolError('限频数量必须为 1 至 10000 的整数')
+            setattr(limits, name, number)
+        for name, low, high in [('upload_max_mb', 1, 100), ('upload_max_megapixels', 1, 80), ('processing_max_edge', 512, 4096)]:
+            number = data.get(name, getattr(limits, name))
+            if type(number) is not int or not low <= number <= high:
+                raise ToolError('图片配置超出允许范围')
             setattr(limits, name, number)
         limits.version += 1
         db.session.commit()

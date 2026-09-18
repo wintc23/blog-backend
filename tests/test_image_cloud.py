@@ -45,3 +45,22 @@ class ImageCloudTests(unittest.TestCase):
             asset=save_image(data.getvalue(),'request')
         self.assertEqual(put.call_args.args[0], 'generation-artifacts/'+asset['sha256']+'.png')
         self.assertEqual(put.call_args.args[1], data.getvalue())
+
+
+class UploadPolicyMigrationTests(unittest.TestCase):
+    def test_upgrade_preserves_existing_quotas_and_sets_upload_defaults(self):
+        import importlib.util
+        from sqlalchemy import create_engine, text
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+        spec = importlib.util.spec_from_file_location('upload_policy_migration', 'migrations/versions/20260919_image_upload_policy.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        engine = create_engine('sqlite://')
+        with engine.begin() as connection:
+            connection.execute(text('CREATE TABLE image_tool_settings (id INTEGER PRIMARY KEY, version INTEGER, global_per_minute INTEGER, user_per_hour INTEGER)'))
+            connection.execute(text('INSERT INTO image_tool_settings VALUES (1, 7, 8, 9)'))
+            with Operations.context(MigrationContext.configure(connection)):
+                module.upgrade()
+            row = dict(connection.execute(text('SELECT * FROM image_tool_settings')).first())
+            self.assertEqual(row, dict(id=1, version=7, global_per_minute=8, user_per_hour=9, upload_max_mb=20, upload_max_megapixels=40, processing_max_edge=2048))
+        engine.dispose()

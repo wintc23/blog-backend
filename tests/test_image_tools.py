@@ -476,5 +476,47 @@ class ImageToolsTests(unittest.TestCase):
             self.assertNotIn('private prompt', event.params)
             self.assertNotIn('ticket', event.params)
 
+    def test_upload_policy_is_public_but_only_admin_can_change_it(self):
+        public = self.client.get('/api/image-tools/upload-policy/').get_json()
+        self.assertEqual(public['max_bytes'], 20 * 1024 * 1024)
+        self.assertEqual(public['processing_max_edge'], 2048)
+        values = self.client.get('/api/image-tools/admin/limits/', headers=self.admin_headers).get_json()['limits']
+        values.update(upload_max_mb=50, upload_max_megapixels=60, processing_max_edge=1024)
+        self.assertEqual(self.client.put('/api/image-tools/admin/limits/', headers=self.headers, json=values).status_code, 403)
+        saved = self.client.put('/api/image-tools/admin/limits/', headers=self.admin_headers, json=values)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(self.client.get('/api/image-tools/upload-policy/').get_json()['max_bytes'], 50 * 1024 * 1024)
+        self.assertEqual(self.client.put('/api/image-tools/admin/limits/', headers=self.admin_headers, json=values).status_code, 409)
+        values = saved.get_json()['limits']; values['processing_max_edge'] = 50000
+        self.assertEqual(self.client.put('/api/image-tools/admin/limits/', headers=self.admin_headers, json=values).status_code, 400)
+        self.assertEqual(self.client.get('/api/image-tools/upload-policy/').get_json()['processing_max_edge'], 1024)
+
+    def test_original_is_retained_while_only_model_input_is_resized(self):
+        task = self.create()
+        data = io.BytesIO(); Image.new('RGBA', (1800, 900), (10, 50, 100, 128)).save(data, 'PNG')
+        raw = data.getvalue()
+        limits = ImageToolSettings.query.get(1); limits.processing_max_edge = 512; db.session.commit()
+        response = self.cloud_upload('/api/image-tasks/{}/assets/'.format(task), self.headers, raw)
+        self.assertEqual(response.status_code, 201)
+        asset = ImageToolAsset.query.get(response.get_json()['id'])
+        self.assertEqual(storage.read(asset, True), raw)
+        with Image.open(io.BytesIO(storage.read(asset))) as resized:
+            self.assertEqual(resized.size, (512, 256))
+            self.assertEqual(resized.getpixel((20,20))[3], 128)
+        output = storage.store(task, raw, 'result.png', kind='output')
+        self.assertEqual((output.width, output.height), (1800, 900))
+
+    def test_upload_ticket_keeps_policy_when_admin_changes_limits_mid_upload(self):
+        task = self.create(); endpoint = '/api/image-tasks/{}/assets/'.format(task)
+        data = io.BytesIO(); Image.new('RGB', (1500, 1000)).save(data, 'PNG'); raw = data.getvalue()
+        grant = self.client.post(endpoint, headers=self.headers, json={'action':'authorize','name':'image.png','size':len(raw),'mime':'image/png'}).get_json()
+        limits=ImageToolSettings.query.get(1); limits.upload_max_megapixels=1; db.session.commit()
+        self.cloud_data[grant['key']] = raw
+        result=self.client.post(endpoint, headers=self.headers, json={'action':'complete','ticket':grant['ticket']})
+        self.assertEqual(result.status_code, 201)
+        # New credentials use the new policy and cannot bypass its decoded pixel limit.
+        result=self.cloud_upload(endpoint, self.headers, raw)
+        self.assertEqual(result.status_code, 400)
+
 
 if __name__ == '__main__': unittest.main()

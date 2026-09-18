@@ -69,3 +69,6 @@ class ImageToolSettings(db.Model):
     version = db.Column(db.Integer, nullable=False, default=1)
     global_per_minute = db.Column(db.Integer, nullable=False, default=10)
     user_per_hour = db.Column(db.Integer, nullable=False, default=10)
+    upload_max_mb = db.Column(db.Integer, nullable=False, default=20)
+    upload_max_megapixels = db.Column(db.Integer, nullable=False, default=40)
+    processing_max_edge = db.Column(db.Integer, nullable=False, default=2048)
