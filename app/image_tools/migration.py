@@ -15,8 +15,12 @@ def migrate(source, kind='image-tools', delete_source=False):
             continue
         data = file.read_bytes()
         key = prefix + file.name
-        cloud.put(key, data, 'image/png' if file.suffix == '.png' else 'application/octet-stream')
-        if hashlib.sha256(cloud.read(key)).digest() != hashlib.sha256(data).digest():
+        try:
+            remote = cloud.read(key)
+        except cloud.StorageError:
+            cloud.put(key, data, 'image/png' if file.suffix == '.png' else 'application/octet-stream')
+            remote = cloud.read(key)
+        if hashlib.sha256(remote).digest() != hashlib.sha256(data).digest():
             raise RuntimeError('Cloud object verification failed; local copy retained')
         if delete_source:
             file.unlink()
