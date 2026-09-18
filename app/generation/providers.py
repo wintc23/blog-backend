@@ -120,12 +120,6 @@ def png_dimensions(data):
     return width, height
 
 
-def artifact_root():
-    root = Path(os.environ.get('CONTENT_ASSET_DIR', str(Path(__file__).resolve().parents[2] / 'var/content-assets')))
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
 def generate_image(config, prompt, request_key):
     model = config['image_model']
     if model.get('provider') == 'codex':
@@ -154,36 +148,32 @@ def generate_image(config, prompt, request_key):
 def save_image(data, request_key):
     width, height = png_dimensions(data)
     digest = hashlib.sha256(data).hexdigest()
-    filename = digest + '.png'
-    path = artifact_root() / filename
-    temporary = path.with_suffix('.' + request_key + '.tmp')
-    temporary.write_bytes(data)
-    temporary.replace(path)
-    return {'filename': filename, 'sha256': digest, 'width': width, 'height': height}
+    from ..image_tools import cloud
+    cloud.put('generation-artifacts/' + digest + '.png', data)
+    return {'filename': digest + '.png', 'sha256': digest, 'width': width, 'height': height}
 
 
 def upload_image(asset):
-    from qiniu import put_file
+    from qiniu import put_data
     from flask import current_app
     from ..qiniu import get_token
     from .. import db
     from ..media_models import MediaAsset
     from datetime import datetime, timedelta
     from uuid import uuid4
-    path = artifact_root() / (asset['sha256'] + '.png')
-    if not path.is_file():
-        raise GenerationError('asset_missing', '已生成图片文件缺失，请恢复资产目录后重试')
-    if hashlib.sha256(path.read_bytes()).hexdigest() != asset['sha256']:
+    from ..image_tools import cloud
+    data = cloud.read('generation-artifacts/' + asset['sha256'] + '.png', 20 * 1024 * 1024)
+    if hashlib.sha256(data).hexdigest() != asset['sha256']:
         raise GenerationError('asset_corrupt', '已生成图片校验失败')
     asset_id = uuid4().hex
     key = 'managed-images/' + asset_id + '.png'
     url = current_app.config['QI_NIU_LINK_URL'].rstrip('/') + '/' + key
     record = MediaAsset(id=asset_id, storage_key=key, url=url, mime_type='image/png',
-        byte_size=path.stat().st_size, width=asset['width'], height=asset['height'],
+        byte_size=len(data), width=asset['width'], height=asset['height'],
         delete_after=datetime.utcnow() + timedelta(hours=24))
     db.session.add(record)
     db.session.commit()
-    result, info = put_file(get_token(key, max_size=20 * 1024 * 1024, mime_limit='image/png'), key, str(path), mime_type='image/png')
+    result, info = put_data(get_token(key, max_size=20 * 1024 * 1024, mime_limit='image/png'), key, data, mime_type='image/png')
     if not result or info.status_code != 200:
         raise GenerationError('upload_failed', '图片上传七牛失败', True)
     record.status = 'ready'

@@ -1,18 +1,15 @@
 """Private jobs and assets; upload handoffs never grant account or generation access."""
 import hashlib
-import io
 import json
 import os
 import re
 import secrets
-import zipfile
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
-from tempfile import SpooledTemporaryFile
 from uuid import uuid4
 from sqlalchemy.exc import SQLAlchemyError
-from flask import current_app, g, jsonify, request, send_file
+from flask import current_app, g, jsonify, request, redirect
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from . import api
 from .decorators import login_required, permission_required
@@ -22,6 +19,7 @@ from ..guest import consume_limits, client_address
 from ..image_tool_models import ImageTool, ImageTask, ImageToolAsset, ImageToolItem, ImageToolSettings
 from ..image_tools.config import encode, public_config, validate_config, validate_options
 from ..image_tools import storage, provider
+from ..image_tools.telemetry import record
 
 
 class ToolError(ValueError):
@@ -80,7 +78,7 @@ def draft_only(task):
 def tool_json(tool, admin=False):
     config = json.loads(tool.config_json)
     return dict(slug=tool.slug, version=tool.version, enabled=tool.enabled, position=tool.position,
-                config=config if admin else public_config(config))
+                config=config if admin else public_config(config, tool.slug))
 
 
 def asset_json(asset, share_hash=None):
@@ -93,7 +91,7 @@ def task_json(task):
     config = json.loads(task.snapshot_json)
     assets = ImageToolAsset.query.filter_by(task_id=task.id).order_by(ImageToolAsset.position, ImageToolAsset.created_at).all()
     items = ImageToolItem.query.filter_by(task_id=task.id).order_by(ImageToolItem.created_at, ImageToolItem.position, ImageToolItem.id).all()
-    return dict(id=task.id, tool_slug=task.tool_slug, tool_version=task.tool_version, config=public_config(config),
+    return dict(id=task.id, tool_slug=task.tool_slug, tool_version=task.tool_version, config=public_config(config, task.tool_slug),
         options=json.loads(task.options_json), status=task.status, created_at=task.created_at.isoformat() + 'Z',
         inputs=[asset_json(a) for a in assets if a.kind == 'input'], outputs=[asset_json(a) for a in assets if a.kind == 'output'],
         items=[dict(id=i.id, source_id=i.source_id, output_id=i.output_id, previous_id=i.previous_id, position=i.position, status=i.status, error=i.error) for i in items],
@@ -186,7 +184,7 @@ def image_tool_admin():
 @endpoint
 def image_tasks():
     if request.method == 'GET':
-        tasks = ImageTask.query.filter_by(owner_id=g.current_user.id, deleted_at=None).order_by(ImageTask.created_at.desc()).limit(100).all()
+        tasks = ImageTask.query.filter_by(owner_id=g.current_user.id, deleted_at=None).filter(ImageTask.status != 'draft').order_by(ImageTask.created_at.desc()).limit(100).all()
         return jsonify(tasks=[dict(id=t.id, name=json.loads(t.snapshot_json)['name'], status=t.status, tool_slug=t.tool_slug,
                                    created_at=t.created_at.isoformat() + 'Z') for t in tasks])
     if getattr(g.current_user, 'is_guest', False):
@@ -248,23 +246,47 @@ def upload_into(task):
     draft_only(task)
     config = json.loads(task.snapshot_json)
     assets = ImageToolAsset.query.filter_by(task_id=task.id, kind='input').all()
-    if len(assets) >= config['max_images']:
-        raise ToolError('此任务最多上传 {} 张图片'.format(config['max_images']))
-    if request.content_length is None or request.content_length > storage.MAX_BYTES + 65536:
-        raise ToolError('每张图片最大 20 MB', 413)
-    owner = User.query.get(task.owner_id)
-    if owner.is_guest:
-        limited = consume_limits(client_address(), [('image-guest-upload', 100, 3600)])
+    data = body()
+    if data.get('action') == 'authorize':
+        if len(assets) >= config['max_images']:
+            raise ToolError('此任务最多上传 {} 张图片'.format(config['max_images']))
+        owner = User.query.get(task.owner_id)
+        if owner.is_guest:
+            limited = consume_limits(client_address(), [('image-guest-upload', 100, 3600)])
+            if limited is not None:
+                return limited
+        limited = consume_limits(str(task.owner_id), [('image-tool-upload', 100, 3600)])
         if limited is not None:
             return limited
-    limited = consume_limits(str(task.owner_id), [('image-tool-upload', 100, 3600)])
-    if limited is not None:
-        return limited
-    file = request.files.get('image')
-    if not file:
-        raise ToolError('请选择图片')
-    asset = storage.store(task.id, file.stream.read(storage.MAX_BYTES + 1), file.filename or '图片', position=len(assets))
+        size, mime, name = data.get('size'), data.get('mime'), data.get('name')
+        if type(size) is not int or not 0 < size <= storage.MAX_BYTES or mime not in ('image/jpeg', 'image/png', 'image/webp') or not isinstance(name, str):
+            raise ToolError('请上传不超过 20 MB 的 JPG、PNG 或 WebP 图片')
+        asset_id = uuid4().hex
+        key = storage.cloud.PREFIX + asset_id + '.original'
+        token = storage.cloud.upload_token(key, size, mime)
+        ticket = signer().dumps(dict(scope='cloud-upload', task=task.id, asset=asset_id, name=name[:180]))
+        db.session.commit()
+        host = storage.cloud.setting('IMAGE_TOOLS_QINIU_UPLOAD_URL')
+        if not host or not host.startswith('https://'):
+            raise ToolError('图片上传服务尚未配置', 503)
+        return jsonify(key=key, token=token, ticket=ticket, upload_url=host)
+    if data.get('action') != 'complete':
+        raise ToolError('请使用七牛云直传上传图片')
+    try:
+        value = signer().loads(data.get('ticket', ''), max_age=600)
+    except BadSignature:
+        raise ToolError('上传凭证已过期，请重新上传', 410)
+    if value.get('scope') != 'cloud-upload' or value.get('task') != task.id:
+        raise ToolError('上传凭证无效', 403)
+    existing = ImageToolAsset.query.filter_by(id=value['asset'], task_id=task.id).first()
+    if existing:
+        return jsonify(id=existing.id, name=existing.name), 201
+    if len(assets) >= config['max_images']:
+        raise ToolError('此任务最多上传 {} 张图片'.format(config['max_images']))
+    raw = storage.cloud.read(storage.cloud.PREFIX + value['asset'] + '.original', storage.MAX_BYTES)
+    asset = storage.store(task.id, raw, value['name'], position=len(assets), asset_id=value['asset'], original_uploaded=True)
     task.updated_at = datetime.utcnow()
+    record('upload_complete', task, count=1, source='phone' if request.headers.get('X-Image-Upload-Token') else 'local')
     db.session.commit()
     return jsonify(id=asset.id, name=asset.name), 201
 
@@ -305,6 +327,8 @@ def image_task_submit(task_id):
         raise ToolError('当前排队任务较多，请稍后再试', 503)
     reserve_quota(task, len(sources))
     task.options_json, task.status, task.upload_nonce = encode(options), 'queued', None
+    task.created_at = datetime.utcnow()
+    record('submitted', task, count=len(sources))
     for position, source in enumerate(sources):
         db.session.add(ImageToolItem(id=uuid4().hex, task_id=task.id, source_id=source.id if source else None, position=position, quota_exempt=g.current_user.can(Permission.ADMIN)))
     db.session.commit()
@@ -327,6 +351,7 @@ def image_task_retry(task_id, item_id):
     reserve_quota(task, 1)
     db.session.add(ImageToolItem(id=uuid4().hex, task_id=task.id, source_id=item.source_id, previous_id=item.id, position=item.position, quota_exempt=g.current_user.can(Permission.ADMIN)))
     task.status = 'queued'
+    record('retry', task, count=1)
     db.session.commit()
     return jsonify(task=task_json(task))
 
@@ -352,7 +377,7 @@ def image_task_clone(task_id):
     db.session.add(task)
     db.session.flush()
     for source in ImageToolAsset.query.filter_by(task_id=original.id, kind='input').all():
-        storage.store(task.id, storage.path(source, True).read_bytes(), source.name, position=source.position)
+        storage.store(task.id, storage.read(source, True), source.name, position=source.position)
     db.session.commit()
     return jsonify(task=task_json(task)), 201
 
@@ -435,13 +460,14 @@ def image_asset(asset_id):
         raise ToolError('图片不存在', 404)
     if ticket.get('share') and (ticket['share'] != task.share_hash or not task.share_until or task.share_until <= datetime.utcnow() or asset_id not in json.loads(task.share_assets_json or '[]')):
         raise ToolError('分享已失效', 403)
-    target = storage.path(asset)
-    if not target.is_file():
-        raise ToolError('图片文件不可用', 404)
-    response = send_file(str(target), mimetype='image/png', as_attachment=request.args.get('download') == '1',
-                         attachment_filename=Path(asset.name).stem + '.png', conditional=True)
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    return response
+    if request.args.get('download') == '1':
+        record('download', task, count=1)
+        db.session.commit()
+    url = storage.cloud.signed_url(storage.key(asset), filename=Path(asset.name).stem + '.png' if request.args.get('download') == '1' else None)
+    # The browser follows this to Qiniu; image bytes never pass through the site.
+    if request.args.get('resolve') == '1':
+        return jsonify(url=url)
+    return redirect(url, code=302)
 
 
 @api.route('/image-tasks/<task_id>/download/')
@@ -452,24 +478,19 @@ def image_task_download(task_id):
     assets = ImageToolAsset.query.filter_by(task_id=task.id, kind='output').order_by(ImageToolAsset.position, ImageToolAsset.created_at).all()
     if not assets:
         raise ToolError('还没有可下载的结果')
-    total = sum(storage.path(a).stat().st_size for a in assets)
-    if total > 300 * 1024 * 1024:
+    if sum(a.byte_size for a in assets) > 300 * 1024 * 1024:
         raise ToolError('结果文件较大，请逐张下载')
-    stream = SpooledTemporaryFile(max_size=8 * 1024 * 1024)
-    with zipfile.ZipFile(stream, 'w', zipfile.ZIP_STORED) as archive:
-        for index, asset in enumerate(assets):
-            archive.write(str(storage.path(asset)), '{:02d}_{}.png'.format(index + 1, Path(asset.name).stem))
-    stream.seek(0)
-    response = send_file(stream, mimetype='application/zip', as_attachment=True, attachment_filename='images-{}.zip'.format(task.id[:8]))
-    response.call_on_close(stream.close)
-    return response
+    record('download_all', task, count=len(assets))
+    db.session.commit()
+    return jsonify(files=[dict(url=storage.cloud.signed_url(storage.key(a), expires=600),
+                   name='{:02d}_{}.png'.format(i + 1, Path(a.name).stem)) for i, a in enumerate(assets)])
 
 
 @api.route('/image-tools/admin/jobs/')
 @permission_required(Permission.ADMIN)
 @endpoint
 def image_tools_admin_jobs():
-    tasks = ImageTask.query.filter_by(deleted_at=None).order_by(ImageTask.created_at.desc()).limit(100).all()
+    tasks = ImageTask.query.filter_by(deleted_at=None).filter(ImageTask.status != 'draft').order_by(ImageTask.created_at.desc()).limit(100).all()
     return jsonify(model=provider.IMAGE_MODEL, limits=settings_json(),
                    jobs=[dict(id=t.id, owner_id=t.owner_id, name=json.loads(t.snapshot_json)['name'], status=t.status, created_at=t.created_at.isoformat() + 'Z') for t in tasks])
 

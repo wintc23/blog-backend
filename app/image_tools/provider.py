@@ -4,7 +4,7 @@ import json
 import os
 import time
 import requests
-from .storage import path, MAX_BYTES
+from .storage import read, MAX_BYTES
 from ..generation.network import cpa_image_url, fetch
 
 
@@ -31,7 +31,7 @@ def generate(prompt, ratio, source, request_id):
     options = {'json': payload}
     if source:
         url = url.rsplit('/', 1)[0] + '/edits'
-        options = dict(data=payload, files={'image': ('reference.png', path(source).read_bytes(), 'image/png')})
+        options = dict(data=payload, files={'image': ('reference.png', read(source), 'image/png')})
     started = time.monotonic()
     with requests.Session() as client:
         client.trust_env = False

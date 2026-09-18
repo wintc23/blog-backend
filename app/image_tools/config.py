@@ -90,8 +90,13 @@ def validate_config(value):
     return result
 
 
-def public_config(config):
-    return {key: value for key, value in config.items() if key != 'instruction'}
+def public_config(config, slug=None):
+    result = {key: value for key, value in config.items() if key != 'instruction'}
+    if not result.get('cover_url') and slug:
+        from flask import current_app
+        cover = slug if slug in ('cartoon', 'restore', 'create') else 'create'
+        result['cover_url'] = current_app.config['QI_NIU_LINK_URL'].rstrip('/') + '/image-tool-covers/' + cover + '.webp'
+    return result
 
 
 def validate_options(config, data):

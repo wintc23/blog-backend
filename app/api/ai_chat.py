@@ -11,6 +11,8 @@ import time
 import uuid
 import base64
 import mimetypes
+import tempfile
+import requests
 from datetime import datetime
 
 from flask import Response, current_app, g, jsonify, request
@@ -220,10 +222,11 @@ class CodexClient(object):
 
     cwd = _session_codex_workdir(chat_session.id)
     before_files = self._snapshot_files(cwd)
-    command = self._build_command(chat_session.codex_session_id, prompt, attachments, cwd)
+    self.attachment_directory = tempfile.TemporaryDirectory(prefix='ai-attachments-', dir='/dev/shm' if os.path.isdir('/dev/shm') else None)
     started = time.time()
     proc = None
     try:
+      command = self._build_command(chat_session.codex_session_id, prompt, attachments, cwd)
       proc = subprocess.Popen(
         command,
         stdin=subprocess.DEVNULL,
@@ -260,6 +263,7 @@ class CodexClient(object):
       }
     finally:
       RUNNING_CODEX_PROCESSES.pop(chat_session.id, None)
+      self.attachment_directory.cleanup()
 
     parsed = self._parse_stdout(stdout)
     if parsed.get('session_id'):
@@ -303,8 +307,17 @@ class CodexClient(object):
     return command
 
   def _attachment_path(self, attachment):
-    dirname, _ = os.path.split(os.path.abspath(sys.argv[0]))
-    return os.path.abspath(os.path.join(dirname, '../files/ai', attachment.file_key))
+    # The CLI requires a path; Linux uses tmpfs and always removes it after invocation.
+    path = os.path.join(self.attachment_directory.name, str(uuid.uuid4()) + os.path.splitext(attachment.file_key)[1])
+    with requests.get(_qiniu_file_url(attachment.file_key), timeout=(10, 60), stream=True) as response:
+      response.raise_for_status()
+      size = 0
+      with open(path, 'wb') as stream:
+        for chunk in response.iter_content(65536):
+          size += len(chunk)
+          if size > MAX_IMAGE_SIZE: raise ValueError('Image too large')
+          stream.write(chunk)
+    return path
 
   def _snapshot_files(self, cwd):
     result = {}
@@ -344,6 +357,8 @@ class CodexClient(object):
             'size': os.path.getsize(path),
             'name': os.path.basename(path),
           })
+          if mime_type.startswith('image/'):
+            os.remove(path)
         except Exception:
           current_app.logger.exception('Collect generated file failed')
     return generated
@@ -624,13 +639,8 @@ def upload_ai_attachment():
   ext = os.path.splitext(filename)[1].lower()
   if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
     return bad_request('图片类型无效')
-  dirname, _ = os.path.split(os.path.abspath(sys.argv[0]))
-  upload_path = os.path.abspath(os.path.join(dirname, '../files/ai', str(session.id)))
-  if not os.path.exists(upload_path):
-    os.makedirs(upload_path)
-  local_path = os.path.join(upload_path, filename)
-  f.save(local_path)
-  file_url = request.form.get('file_url') or _attachment_url(file_key)
+  # The browser already uploaded to Qiniu. Never save a second server copy.
+  file_url = _qiniu_file_url(file_key)
   return jsonify({
     'file_key': file_key,
     'file_url': file_url,
@@ -641,10 +651,10 @@ def upload_ai_attachment():
 
 @api.route('/ai/attachments/<path:filename>')
 def get_ai_attachment(filename):
-  from flask import send_from_directory
-  dirname, _ = os.path.split(os.path.abspath(sys.argv[0]))
-  upload_path = os.path.abspath(os.path.join(dirname, '../files/ai'))
-  return send_from_directory(upload_path, filename)
+  from flask import redirect
+  if '..' in filename.split('/'):
+    return not_found('图片不存在')
+  return redirect(_qiniu_file_url(filename), code=302)
 
 
 @api.route('/manage/ai-keys')

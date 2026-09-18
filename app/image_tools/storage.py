@@ -1,28 +1,25 @@
 import io
-import os
 import warnings
 from pathlib import Path
 from uuid import uuid4
 from PIL import Image, ImageOps, UnidentifiedImageError
-from flask import current_app
 from .. import db
+from . import cloud
 from ..image_tool_models import ImageToolAsset
 
 MAX_BYTES = 20 * 1024 * 1024
 MAX_PIXELS = 40_000_000
 
 
-def root():
-    folder = Path(current_app.config.get('IMAGE_TOOLS_STORAGE') or os.environ.get('IMAGE_TOOLS_STORAGE') or Path(current_app.instance_path) / 'image-tools').resolve()
-    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    return folder
+def key(asset, original=False):
+    return cloud.PREFIX + asset.id + ('.original' if original else '.png')
 
 
-def path(asset, original=False):
-    return root() / (asset.id + ('.original' if original else '.png'))
+def read(asset, original=False):
+    return cloud.read(key(asset, original), MAX_BYTES if original else 80 * 1024 * 1024)
 
 
-def store(task_id, data, filename, kind='input', position=0):
+def store(task_id, data, filename, kind='input', position=0, asset_id=None, original_uploaded=False):
     if not data or len(data) > MAX_BYTES:
         raise ValueError('每张图片最大 20 MB')
     try:
@@ -44,20 +41,15 @@ def store(task_id, data, filename, kind='input', position=0):
         raise ValueError('图片无效，请上传 JPG、PNG 或 WebP 图片')
     name = Path(filename.replace('\\', '/')).name
     name = ''.join(c for c in name if c.isprintable() and c not in '/\\').strip()[:160] or '图片'
-    asset = ImageToolAsset(id=uuid4().hex, task_id=task_id, kind=kind, name=name, extension=extension,
+    asset = ImageToolAsset(id=asset_id or uuid4().hex, task_id=task_id, kind=kind, name=name, extension=extension,
         width=clean.width, height=clean.height, byte_size=len(data), position=position)
-    # Files are private; no executable names or paths originate from the upload.
-    for target, content in [(path(asset), output.getvalue()), (path(asset, True), data)]:
-        with target.open('xb') as stream:
-            os.chmod(str(target), 0o600)
-            stream.write(content)
+    if not original_uploaded:
+        cloud.put(key(asset, True), data, 'application/octet-stream')
+    cloud.put(key(asset), output.getvalue())
     db.session.add(asset)
     return asset
 
 
 def discard(asset):
-    for file in (path(asset), path(asset, True)):
-        try:
-            file.unlink()
-        except FileNotFoundError:
-            pass
+    for name in (key(asset), key(asset, True)):
+        cloud.delete(name)

@@ -16,6 +16,9 @@ from test_codex_image_provider import png
 
 class CpaImageTests(unittest.TestCase):
     def setUp(self):
+        cloud = patch('app.image_tools.cloud.put')
+        self.cloud_put = cloud.start()
+        self.addCleanup(cloud.stop)
         directory = TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         env = patch.dict(os.environ, {'CONTENT_CPA_API_KEY': 'private-fixture',

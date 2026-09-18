@@ -28,6 +28,9 @@ def png():
 
 class CodexImageProviderTests(unittest.TestCase):
     def setUp(self):
+        cloud = patch('app.image_tools.cloud.put')
+        self.cloud_put = cloud.start()
+        self.addCleanup(cloud.stop)
         self.directory = TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()
@@ -64,8 +67,8 @@ class CodexImageProviderTests(unittest.TestCase):
             asset, metadata = providers.generate_image(self.config, '蓝白概念插图', 'request-1')
         self.assertEqual((asset['width'], asset['height']), (256, 128))
         self.assertEqual(asset['sha256'], hashlib.sha256(png()).hexdigest())
-        self.assertEqual((self.root / 'assets' / asset['filename']).read_bytes(), png())
-        self.assertTrue((self.root / 'generated_images/image-thread/call.png').is_file())
+        self.assertEqual(self.cloud_put.call_args.args, ('generation-artifacts/' + asset['filename'], png()))
+        self.assertFalse((self.root / 'generated_images/image-thread/call.png').exists())
         self.assertEqual(metadata['native_image_tool'], 'image_gen.imagegen')
 
     def test_missing_or_api_key_login_cannot_start_a_paid_generation(self):
@@ -98,7 +101,7 @@ class CodexImageProviderTests(unittest.TestCase):
         with patch.object(codex_provider.subprocess, 'run', return_value=self.event_result()):
             with self.assertRaises(GenerationError):
                 codex_provider.generate_image(self.model, 'cover', 'request-1')
-            output.unlink()
+            self.assertFalse(output.exists())
             outside = self.root / 'unrelated.png'
             outside.write_bytes(png())
             output.symlink_to(outside)

@@ -164,7 +164,10 @@ def generate_image(model, prompt, request_key):
             raise GenerationError('invalid_image', 'Codex 图片路径不正确')
         if image.stat().st_size > 20 * 1024 * 1024:
             raise GenerationError('invalid_image', 'Codex 图片文件超过 20 MB')
-        data = image.read_bytes()
+        try:
+            data = image.read_bytes()
+        finally:
+            image.unlink()
         from .providers import png_dimensions
         png_dimensions(data)
         metadata['native_image_tool'] = 'image_gen.imagegen'

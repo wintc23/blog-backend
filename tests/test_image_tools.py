@@ -21,7 +21,18 @@ class ImageToolsTests(unittest.TestCase):
 
     def setUp(self):
         fixture.GuestLoginTests.setUp(self)
-        self.app.config.update(IMAGE_TOOLS_STORAGE=self.database.name + '/private')
+        self.app.config.update(IMAGE_TOOLS_QINIU_UPLOAD_URL='https://up.test')
+        self.cloud_data = {}
+        for name, fn in {
+            'put': lambda key, data, mime='image/png': self.cloud_data.__setitem__(key, data),
+            'read': lambda key, limit=0: self.cloud_data[key],
+            'delete': lambda key: self.cloud_data.pop(key, None),
+            'signed_url': lambda key, **kwargs: 'https://s3.cn-south-1.qiniucs.com/private/' + key + '?signed=1',
+            'upload_token': lambda *args: 'limited-token',
+            'objects': lambda: [],
+        }.items():
+            mock = patch('app.image_tools.cloud.' + name, side_effect=fn)
+            mock.start(); self.patches.append(mock)
         for model in (ImageTool, ImageTask, ImageToolAsset, ImageToolItem, ImageToolSettings):
             model.__table__.create(db.engine)
         seed()
@@ -42,8 +53,16 @@ class ImageToolsTests(unittest.TestCase):
         self.assertEqual(result.status_code, 201, result.get_json())
         return result.get_json()['task']['id']
 
+    def cloud_upload(self, endpoint, headers, raw, name='image.png', mime='image/png'):
+        grant = self.client.post(endpoint, headers=headers, json={'action': 'authorize', 'name': name, 'size': len(raw), 'mime': mime})
+        if grant.status_code != 200:
+            return grant
+        data = grant.get_json()
+        self.cloud_data[data['key']] = raw
+        return self.client.post(endpoint, headers=headers, json={'action': 'complete', 'ticket': data['ticket']})
+
     def upload(self, task_id, name='image.png', headers=None):
-        response = self.client.post('/api/image-tasks/{}/assets/'.format(task_id), headers=headers or self.headers, data={'image': (io.BytesIO(self.png()), name)})
+        response = self.cloud_upload('/api/image-tasks/{}/assets/'.format(task_id), headers or self.headers, self.png(), name)
         self.assertEqual(response.status_code, 201, response.get_json())
         return response.get_json()['id']
 
@@ -83,7 +102,7 @@ class ImageToolsTests(unittest.TestCase):
         asset = ImageToolAsset.query.get(asset_id)
         self.assertEqual(asset.name, 'secret.png')
         self.assertEqual(self.client.get('/api/image-assets/{}/'.format(asset_id)).status_code, 403)
-        self.assertEqual(self.client.get('/api' + self.read(task_id)['inputs'][0]['url'], buffered=True).status_code, 200)
+        self.assertEqual(self.client.get('/api' + self.read(task_id)['inputs'][0]['url'], buffered=True).status_code, 302)
 
     def test_handoff_can_only_upload_current_draft_and_revokes(self):
         task_id = self.create()
@@ -91,7 +110,7 @@ class ImageToolsTests(unittest.TestCase):
         headers = {'X-Image-Upload-Token': result['token']}
         self.assertEqual(self.client.get('/api/image-upload-session/', headers=headers).status_code, 200)
         self.assertEqual(self.client.post('/api/image-tasks/{}/submit/'.format(task_id), headers=headers, json={}).status_code, 401)
-        response = self.client.post('/api/image-upload-session/', headers=headers, data={'image': (io.BytesIO(self.png()), 'phone.png')})
+        response = self.cloud_upload('/api/image-upload-session/', headers, self.png(), 'phone.png')
         self.assertEqual(response.status_code, 201, response.get_json())
         self.assertEqual(len(self.read(task_id)['inputs']), 1)
         self.assertEqual(self.submit(task_id).status_code, 200)
@@ -115,14 +134,14 @@ class ImageToolsTests(unittest.TestCase):
         self.assertEqual(len(task['outputs']), 2)
         result = self.client.get('/api/image-tasks/{}/download/'.format(task_id), headers=self.headers)
         self.assertEqual(result.status_code, 200)
-        import zipfile
-        self.assertEqual(len(zipfile.ZipFile(io.BytesIO(result.data)).namelist()), 2)
+        self.assertEqual(len(result.get_json()['files']), 2)
+        self.assertTrue(all(f['url'].startswith('https://s3.') for f in result.get_json()['files']))
         share = self.client.post('/api/image-tasks/{}/share/'.format(task_id), headers=self.headers, json={'asset_ids': [task['outputs'][0]['id']]}).get_json()
         public = self.client.get('/api/image-shares/{}/'.format(share['token'])).get_json()
         self.assertEqual(len(public['outputs']), 1)
         self.assertNotIn('inputs', public); self.assertNotIn('options', public)
         signed = '/api' + public['outputs'][0]['url']
-        self.assertEqual(self.client.get(signed, buffered=True).status_code, 200)
+        self.assertEqual(self.client.get(signed, buffered=True).status_code, 302)
         self.client.delete('/api/image-tasks/{}/share/'.format(task_id), headers=self.headers)
         self.assertEqual(self.client.get(signed, buffered=True).status_code, 403)
 
@@ -186,7 +205,7 @@ class ImageToolsTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api' + url).status_code, 404)
         cleanup()
         self.assertIsNone(ImageTask.query.get(first))
-        self.assertTrue(storage.path(ImageToolAsset.query.get(second_asset)).is_file())
+        self.assertIn(storage.key(ImageToolAsset.query.get(second_asset)), self.cloud_data)
 
     def test_deleting_and_cleaning_task_cannot_restore_hourly_quota(self):
         task_id = self.create(); self.upload(task_id); self.submit(task_id)
@@ -249,12 +268,11 @@ class ImageToolsTests(unittest.TestCase):
         data = io.BytesIO()
         Image.new('RGB', (20, 10), 'red').save(data, 'JPEG', comment=b'private location')
         raw = data.getvalue()
-        response = self.client.post('/api/image-tasks/{}/assets/'.format(task_id), headers=self.headers,
-            data={'image': (io.BytesIO(raw), 'old.jpg')})
+        response = self.cloud_upload('/api/image-tasks/{}/assets/'.format(task_id), self.headers, raw, 'old.jpg', 'image/jpeg')
         self.assertEqual(response.status_code, 201)
         asset = ImageToolAsset.query.get(response.get_json()['id'])
-        self.assertEqual(storage.path(asset, True).read_bytes(), raw)
-        with Image.open(storage.path(asset)) as image:
+        self.assertEqual(storage.read(asset, True), raw)
+        with Image.open(io.BytesIO(storage.read(asset))) as image:
             self.assertEqual(image.format, 'PNG')
             self.assertNotIn('exif', image.info)
 
@@ -416,5 +434,47 @@ class ImageToolsTests(unittest.TestCase):
         self.assertEqual(sorted(statuses), [200, 429])
 
 
-if __name__ == '__main__': unittest.main()
 
+    def test_drafts_are_not_jobs_until_first_successful_submit(self):
+        task = self.create()
+        self.upload(task)
+        self.assertEqual(self.client.get('/api/image-tasks/', headers=self.headers).get_json()['tasks'], [])
+        self.assertEqual(self.client.get('/api/image-tools/admin/jobs/', headers=self.admin_headers).get_json()['jobs'], [])
+        self.submit(task)
+        rows = self.client.get('/api/image-tasks/', headers=self.headers).get_json()['tasks']
+        self.assertEqual([r['id'] for r in rows], [task])
+
+    def test_direct_upload_tickets_are_scoped_idempotent_and_validate_content(self):
+        task, other = self.create(), self.create()
+        endpoint = '/api/image-tasks/{}/assets/'.format(task)
+        grant = self.client.post(endpoint, headers=self.headers, json={'action':'authorize','name':'safe.png','size':1000,'mime':'image/png'}).get_json()
+        self.cloud_data[grant['key']] = self.png()
+        data = {'action':'complete','ticket':grant['ticket']}
+        self.assertEqual(self.client.post('/api/image-tasks/{}/assets/'.format(other), headers=self.headers, json=data).status_code, 403)
+        first = self.client.post(endpoint, headers=self.headers, json=data)
+        second = self.client.post(endpoint, headers=self.headers, json=data)
+        self.assertEqual(first.get_json()['id'], second.get_json()['id'])
+        self.assertEqual(len(self.read(task)['inputs']), 1)
+        grant = self.client.post(endpoint, headers=self.headers, json={'action':'authorize','name':'bad.png','size':1000,'mime':'image/png'}).get_json()
+        self.cloud_data[grant['key']] = b'not an image'
+        self.assertEqual(self.client.post(endpoint, headers=self.headers, json={'action':'complete','ticket':grant['ticket']}).status_code, 400)
+        self.assertEqual(len(self.read(task)['inputs']), 1)
+        self.assertFalse((Path(self.app.instance_path) / 'image-tools' / (first.get_json()['id'] + '.png')).exists())
+
+    def test_backend_analytics_are_idempotent_and_exclude_private_content(self):
+        from app.models import StatEvent
+        task = self.create(); self.upload(task, 'private-name.png')
+        self.client.patch('/api/image-tasks/{}/'.format(task), headers=self.headers, json={'options':{'prompt':'private prompt'}})
+        self.submit(task); self.submit(task)
+        with patch('app.image_tools.provider.generate', return_value=self.png()): run_one()
+        events = StatEvent.query.filter(StatEvent.name.like('image_tool.%')).all()
+        self.assertEqual([e.name for e in events].count('image_tool.submitted'), 1)
+        self.assertEqual([e.name for e in events].count('image_tool.result'), 1)
+        self.assertTrue(any(e.name == 'image_tool.upload_complete' for e in events))
+        for event in events:
+            self.assertNotIn('private-name', event.params)
+            self.assertNotIn('private prompt', event.params)
+            self.assertNotIn('ticket', event.params)
+
+
+if __name__ == '__main__': unittest.main()

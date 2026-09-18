@@ -1,12 +1,14 @@
 """One provider request per claimed item; ambiguous requests are never auto-replayed."""
 import json
 import os
+import time
 from datetime import datetime, timedelta
 from uuid import uuid4
 import requests
 from .. import db
 from ..image_tool_models import ImageTool, ImageTask, ImageToolItem, ImageToolAsset, ImageToolSettings
 from . import provider, storage
+from .telemetry import record
 from .config import DEFAULTS, encode
 
 
@@ -40,6 +42,7 @@ def recover():
         if changed:
             db.session.expire_all()
             refresh_status(task_id)
+            record('result', ImageTask.query.get(task_id), status='uncertain', count=1)
     db.session.commit()
 
 
@@ -120,6 +123,7 @@ def run_one():
             except ValueError:
                 outcome, error = 'failed', '返回图片无效，请稍后重试'
         item.status, item.error = outcome, error
+        record('result', task, count=1, status=outcome, duration_ms=max(0, int((datetime.utcnow() - item.started_at).total_seconds() * 1000)))
         refresh_status(task_id)
     item.finished_at, item.lease_token, item.lease_until = datetime.utcnow(), None, None
     db.session.commit()
@@ -148,8 +152,10 @@ def cleanup():
         ImageToolItem.query.filter_by(task_id=task.id).delete()
         db.session.delete(task)
     db.session.commit()
-    # Remove file writes that were interrupted before their DB transaction committed.
+    # Orphaned uploads (including unused direct-upload tickets) expire after a day.
     known = {a.id for a in ImageToolAsset.query.all()}
-    for path in storage.root().iterdir():
-        if path.is_file() and path.suffix in ('.png', '.original') and path.stem not in known and datetime.utcfromtimestamp(path.stat().st_mtime) < datetime.utcnow() - timedelta(days=1):
-            path.unlink()
+    cutoff = (time.time() - 86400) * 10000000
+    for obj in storage.cloud.objects():
+        name = obj['key'][len(storage.cloud.PREFIX):]
+        if name.split('.')[0] not in known and obj['putTime'] < cutoff:
+            storage.cloud.delete(obj['key'])
