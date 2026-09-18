@@ -3,12 +3,13 @@ from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 
 api = Blueprint('api', __name__)
 
-from . import comments, posts, users, decorators, errors, files, messages, topic, tag, link, sitemap, stat, ai_chat, products, personal_profile, ai_digest, generation, life_moments
+from . import comments, posts, users, decorators, errors, files, messages, topic, tag, link, sitemap, stat, ai_chat, products, personal_profile, ai_digest, generation, life_moments, email_login, media, image_tools
 from ..models import User, AiAccessKey
 from .. import db
 
 @api.before_request
 def before_request():
+  g.media_cleanup_needed = False
   if request.method == 'OPTIONS':
     return jsonify({ 'success': True })
   authString = request.headers.get('Authorization', '')
@@ -37,8 +38,23 @@ def after_request(response):
   try:
     db.session.commit()
   except:
+    db.session.rollback()
     response = errors.server_error('服务器出现异常', True)
+  if getattr(g, 'media_cleanup_needed', False):
+    from ..media import cleanup_images
+    try:
+      cleanup_images(limit=6)
+    except Exception:
+      db.session.rollback()
+      current_app.logger.warning('Image cleanup will retry later')
   return response
+
+from ..media import MediaReferenceError
+
+@api.errorhandler(MediaReferenceError)
+def invalid_media(error):
+  db.session.rollback()
+  return jsonify({'message': str(error), 'notify': True}), 400
 
 @api.teardown_request
 def dbsession_clean(exception=None):

@@ -257,6 +257,8 @@ def delete_post(post_id):
   post = Post.query.get(post_id)
   if not post:
     return not_found('查找不到文章', True)
+  for comment in post.comments.all():
+    db.session.delete(comment)
   db.session.delete(post)
   delete_objects([post.id], 'post')
   return jsonify({
@@ -273,14 +275,43 @@ def get_about_me():
       return not_found('获取数据失败', True)
   return jsonify(post.to_json())
 
+@api.route('/posts/<int:post_id>/likes/', methods=['GET', 'POST', 'DELETE'])
+def post_likes(post_id):
+  user = g.current_user
+  if not user and (request.method != 'GET' or request.headers.get('Authorization')):
+    return unauthorized('请先登录')
+  post = Post.query.get(post_id)
+  if not post or ((post.hide or not post.type or post.type.special) and
+                  not (user and user.is_administrator())):
+    return not_found('找不到文章')
+  if request.method == 'POST':
+    response = like_post(post_id)
+  elif request.method == 'DELETE':
+    response = cancel_like_post(post_id)
+  else:
+    response = jsonify({'likes': post.likes.count(),
+                        'like': bool(user and post.likes.filter_by(author_id=user.id).first())})
+  if hasattr(response, 'headers'):
+    response.headers['Cache-Control'] = 'private, no-store'
+  return response
+
+
 @api.route('/like-post/<post_id>')
 @login_required
 def like_post(post_id):
-  post = Post.query.get(post_id) if post_id else None
+  # Serialize concurrent inserts for the legacy table, which has no unique key.
+  post = Post.query.filter_by(id=post_id).with_for_update().first() if post_id else None
   if not post:
     return not_found('找不到文章', True)
-  like = post.likes.filter_by(author = g.current_user).first()
+  like = post.likes.filter_by(author = g.current_user).with_for_update().first()
   if not like:
+    if g.current_user.is_guest:
+      from ..guest import consume_limits
+      if post.hide or post.type.special:
+        return not_found('找不到文章', True)
+      limited = consume_limits(str(g.current_user.id), [('like-minute', 5, 60), ('like-hour', 30, 3600)])
+      if limited is not None:
+        return limited
     like = Like(post_id = post_id, author = g.current_user)
     db.session.add(like)
     db.session.commit()
@@ -299,6 +330,8 @@ def like_post(post_id):
         post_title = post.title,
         url = url)
   else:
+    # Refresh the snapshot after a concurrent like completed while we waited.
+    db.session.commit()
     json = { 'likes': post.likes.count(), 'like': True, 'notify': True, 'message': '您已赞过此文章了' }
   return jsonify(json)
 
@@ -307,21 +340,17 @@ def like_post(post_id):
 def cancel_like_post(post_id):
   if not post_id:
     return not_found('未找到文章')
-  post = Post.query.get(post_id)
+  post = Post.query.filter_by(id=post_id).with_for_update().first()
   if not post:
     return not_found('找不到文章')
-  like = post.likes.filter_by(author = g.current_user).first()
-  if not like:
-    return not_found('未曾点赞')
-  from .stat import record_business_event
-  record_business_event('post.like_cancelled', {'post_id': post.id})
-  db.session.delete(like)
-  json = { 'likes': post.likes.count() }
-  json['like'] = False
-  if g.current_user:
-    if post.likes.filter_by(author = g.current_user).first():
-      json['like'] = True
-  return jsonify(json)
+  likes = post.likes.filter_by(author=g.current_user).with_for_update().all()
+  for like in likes:
+    db.session.delete(like)
+  db.session.commit()
+  if likes:
+    from .stat import record_business_event
+    record_business_event('post.like_cancelled', {'post_id': post.id})
+  return jsonify({'likes': post.likes.count(), 'like': False})
 
 @api.route('/get-popu-posts/')
 def get_top_ten():

@@ -16,6 +16,26 @@ from . import providers, sources
 LEASE_SECONDS = 120
 
 
+def review_passed(review):
+    return isinstance(review, dict) and review.get('passed') is True and review.get('issues') == []
+
+
+def prepare_review_retry(data, previous_attempt):
+    """Keep evidence and completed assets, but regenerate text rejected by review."""
+    if 'review' not in data or review_passed(data['review']):
+        return False
+    review = data.pop('review')
+    document = data.pop('document', None)
+    data.setdefault('review_history', []).append({
+        'attempt': previous_attempt, 'review': review, 'document': document})
+    issues = review.get('issues') if isinstance(review, dict) else None
+    data['inputs']['review_feedback'] = issues or ['上轮事实核对未通过，请逐项检查原文支持，删除或修正无依据的表述。']
+    data['inputs']['previous_document'] = document
+    if data.get('image_prompt'):
+        data['inputs']['existing_cover_prompt'] = data['image_prompt']
+    return True
+
+
 def task_version(task):
     return Version.query.filter_by(task_id=task.id, version=task.version).one()
 
@@ -257,6 +277,8 @@ def execute(job_id, token, run_id):
                            'preferred_lookback_hours': config['lookback_hours']})
             data['inputs'] = inputs
             checkpoint(job_id, token, run_id, 'text', data)
+        if prepare_review_retry(data, job.attempt - 1):
+            checkpoint(job_id, token, run_id, 'text', data)
         if 'document' not in data:
             raw, usage = providers.generate_text(config, adapter['system'], data['inputs'], request_key('text'))
             data['document'] = adapter['build'](raw, data['inputs'], config, edition)
@@ -289,8 +311,8 @@ def execute(job_id, token, run_id):
                  'summary': data['document']['summary'], 'source_documents': data['inputs']['sources']}, request_key('validate'))
             data['review'] = review
             checkpoint(job_id, token, run_id, 'validate', data, {'fact_review': usage})
-        if data['review'].get('passed') is not True or data['review'].get('issues') != []:
-            raise GenerationError('fact_review_failed', '来源核对未通过，请在阶段产物中查看 review 问题并重新生成')
+        if not review_passed(data['review']):
+            raise GenerationError('fact_review_failed', '来源核对未通过，需修正文案后重新核对', True)
         checkpoint(job_id, token, run_id, 'persist', data)
         persist_result(job_id, token, run_id, data['document'])
     except LeaseLost:

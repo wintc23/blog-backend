@@ -1,7 +1,7 @@
 
 from flask import current_app
 from app import db
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
 import time
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
@@ -74,6 +74,9 @@ class User(db.Model):
   id = db.Column(db.Integer, primary_key = True)
   id_string = db.Column(db.String(64), unique = True, index = True)
   email = db.Column(db.String(64), unique = True, index = True)
+  email_verified_at = db.Column(db.DateTime)
+  email_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+  auth_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
   username = db.Column(db.String(64), index = True)
   avatar = db.Column(db.String(64), default="default")
   role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
@@ -110,7 +113,7 @@ class User(db.Model):
 
   def generate_auth_token(self, expiration):
     s = Serializer(current_app.config['SECRET_KEY'], expires_in = expiration)
-    return s.dumps({'id': self.id}).decode('utf-8')
+    return s.dumps({'id': self.id, 'version': self.auth_version or 0}).decode('utf-8')
 
   @staticmethod
   def verify_auth_token(token):
@@ -119,36 +122,70 @@ class User(db.Model):
       data = s.loads(token.encode('utf-8'))
     except:
       return None
-    return User.query.get(data['id'])
+    if not isinstance(data, dict) or type(data.get('id')) is not int or data.get('type'):
+      return None
+    user = User.query.get(data['id'])
+    if user is None or data.get('version', 0) != (user.auth_version or 0):
+      return None
+    return user
   
   def can(self, permission):
+    if self.is_guest and permission & ~(Permission.FOLLOW | Permission.COMMENT):
+      return False
     return self.role is not None and self.role.has_permission(permission)
+
+  @property
+  def is_guest(self):
+    return bool(self.id_string and self.id_string.startswith('guest:'))
   
   def is_administrator(self):
     return self.can(Permission.ADMIN)
 
   def avatar_url(self):
+    if self.avatar and self.avatar.startswith('generated:'):
+      from .guest import avatar_url
+      return avatar_url(self.avatar[len('generated:'):])
+    if self.is_guest:
+      from .guest import avatar_url
+      return avatar_url(self.avatar)
     return current_app.config['QI_NIU_LINK_URL'] + '/' + self.avatar
 
-  def to_json(self):
-    return {
+  def to_json(self, include_email=False):
+    result = {
       'id': self.id,
       'username': self.username,
+      'is_guest': self.is_guest,
       'avatar': self.avatar_url(),
       'about_me': self.about_me,
-      'email': self.email,
       'admin': self.is_administrator()
     }
+    if include_email:
+      result['email'] = self.email
+    return result
 
   def get_detail(self):
-    return {
-      'id': self.id,
-      'username': self.username,
-      'avatar': self.avatar_url(),
-      'email': self.email,
-      'about_me': self.about_me,
-      'admin': self.is_administrator(),
-    }
+    return self.to_json(include_email=True)
+
+
+class GuestRateLimit(db.Model):
+  """Shared, transactional limits across application workers; no raw IPs."""
+  __tablename__ = 'guest_rate_limits'
+  key = db.Column(db.String(64), primary_key=True)
+  hits = db.Column(db.Integer, nullable=False, default=0)
+  expires_at = db.Column(db.BigInteger, nullable=False, index=True)
+
+
+class EmailLoginChallenge(db.Model):
+  __tablename__ = 'email_login_challenges'
+  id = db.Column(db.String(64), primary_key=True)
+  email = db.Column(db.String(64), nullable=False, index=True)
+  code_digest = db.Column(db.String(64), nullable=False)
+  user_id = db.Column(db.Integer, nullable=True)
+  email_version = db.Column(db.Integer, nullable=False, default=0)
+  expires_at = db.Column(db.BigInteger, nullable=False, index=True)
+  attempts = db.Column(db.Integer, nullable=False, default=0)
+  ready = db.Column(db.Boolean, nullable=False, default=False)
+  consumed_at = db.Column(db.BigInteger, nullable=True)
 
 
 class PostType(db.Model):
@@ -254,19 +291,24 @@ class LifeMoment(db.Model):
   id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
   date = db.Column(db.Date, nullable=False)
   category = db.Column(db.String(16), nullable=False)
-  text = db.Column(db.String(280), nullable=False)
+  text = db.Column(db.Text, nullable=False)
+  occurred_at = db.Column(db.DateTime, nullable=True)
+  images_json = db.Column(db.Text, nullable=True)
   image_url = db.Column(db.Text, nullable=False)
   image_alt = db.Column(db.String(120), nullable=False, default='')
   location = db.Column(db.String(60), nullable=False, default='')
   created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
   updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-  __table_args__ = (db.Index('ix_life_moments_chronology', 'date', 'created_at', 'id'),)
+  __table_args__ = (db.Index('ix_life_moments_chronology', 'date', 'occurred_at', 'created_at', 'id'),)
 
   def to_json(self):
     return {
       'id': self.id, 'date': self.date.isoformat(), 'category': self.category,
       'text': self.text, 'image_url': self.image_url,
       'image_alt': self.image_alt, 'location': self.location,
+      'occurred_at': self.occurred_at.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=8))).isoformat() if self.occurred_at else None,
+      'images': json.loads(self.images_json) if self.images_json is not None else
+        ([{'url': self.image_url, 'description': self.image_alt or ''}] if self.image_url else []),
     }
 
 
@@ -372,6 +414,7 @@ class Comment(db.Model):
   id = db.Column(db.Integer, primary_key = True)
   body = db.Column(db.Text)
   post_id = db.Column(db.Integer, db.ForeignKey('posts.id'))
+  digest_id = db.Column(db.Integer, db.ForeignKey('ai_digests.id'), nullable=True, index=True)
   author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
   comments = db.relationship('Comment', backref = db.backref('response', remote_side=[id]), lazy = 'dynamic')
   response_id = db.Column(db.Integer, db.ForeignKey('comments.id'))
@@ -379,7 +422,8 @@ class Comment(db.Model):
   hide = db.Column(db.Boolean, default = True)
 
   def to_json(self):
-    post = Post.query.get(self.post_id)
+    from .digest_models import AiDigest
+    target = AiDigest.query.get(self.digest_id) if self.digest_id else self.post
     return {
       'id': self.id,
       'body': self.body,
@@ -388,7 +432,9 @@ class Comment(db.Model):
       'timestamp': time.mktime(self.timestamp.timetuple()),
       'hide': self.hide,
       'post_id': self.post_id,
-      'post_title': self.post.title
+      'digest_id': self.digest_id,
+      'post_title': target.title if target else '',
+      'target_url': '/ai-news/{}'.format(self.digest_id) if self.digest_id else '/article/{}'.format(self.post_id)
     }
 
   @staticmethod

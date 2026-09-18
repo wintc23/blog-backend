@@ -2,6 +2,7 @@ import os
 import sys
 import uuid
 import time
+import re
 
 from qiniu import Auth
 from . import api
@@ -23,18 +24,16 @@ def get_file():
 @api.route('/get-qiniu-token/<filename>')
 @permission_required(Permission.ADMIN)
 def get_qiniu_token(filename):
-  token = get_token(filename)
+  if not re.fullmatch(r'[a-f0-9]{32}', filename):
+    return jsonify({'message': '文件名不正确'}), 400
+  video = request.args.get('kind') == 'video'
+  token = get_token(filename, max_size=(50 if video else 5) * 1024 * 1024,
+                    mime_limit='video/mp4;video/webm' if video else 'image/jpeg;image/png;image/webp')
   domain = current_app.config['QI_NIU_LINK_URL']
   return jsonify({ 'token': token, 'domain': domain })
 
 @api.route('/save-image/', methods = ['PUT'])
 @permission_required(Permission.ADMIN)
 def save_post_image():
-  f = request.files['image']
-  filename = str(uuid.uuid1()).replace('-', '')
-  dirname, _ = os.path.split(os.path.abspath(sys.argv[0]))
-  upload_path = dirname + '/../files/post/'
-  if not os.path.exists(upload_path):
-    os.makedirs(upload_path)
-  f.save(upload_path + filename)
-  return jsonify({ 'message': '上传成功', 'filename': filename, 'path': 'post' })
+  from .media import upload_image
+  return upload_image()

@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .qiniu*
 /var/content-assets/
+
+# Private uploads, queue state, local credentials and runtime artifacts.
+/instance/
+/var/
+.env
+.env.*

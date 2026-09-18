@@ -123,6 +123,8 @@ def main():
                 with app.app_context():
                     if args.command == 'scheduler':
                         engine.tick(args.environment)
+                        from app.media import cleanup_images
+                        cleanup_images(limit=20)
                     elif args.command == 'collector':
                         from app.generation.sources import collect
                         ids = set()

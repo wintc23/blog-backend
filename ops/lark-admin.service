@@ -1,0 +1,23 @@
+[Unit]
+Description=Feishu owner website administration bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Template: replace @PROJECT_DIR@, @SERVICE_USER@, @SERVICE_HOME@,
+# @ENV_FILE@ and @PYTHON@ before installation.
+User=@SERVICE_USER@
+WorkingDirectory=@PROJECT_DIR@
+Environment=HOME=@SERVICE_HOME@
+Environment=LARK_BRIDGE_ENV_FILE=@ENV_FILE@
+Environment=LARK_BRIDGE_PYTHON=@PYTHON@
+ExecStart=/bin/bash @PROJECT_DIR@/ops/start-lark-admin.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=40
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

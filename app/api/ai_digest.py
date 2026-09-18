@@ -7,7 +7,8 @@ from .decorators import permission_required
 from .errors import bad_request, forbidden, not_found, unauthorized
 from .. import db
 from ..models import Permission
-from ..digest_models import AiDigest, AiDigestSettings, AiNewsItem, AiNewsSource
+from ..digest_models import AiDigest, AiDigestLike, AiDigestSettings, AiNewsItem, AiNewsSource
+from sqlalchemy.exc import IntegrityError
 from ..digest_settings import public_settings
 
 
@@ -126,6 +127,39 @@ def record_ai_digest_read(digest_id):
         return not_found('动态不存在')
     db.session.commit()
     return jsonify({'read_times': AiDigest.query.get(digest_id).read_times, 'counted': True})
+
+
+@api.route('/ai-digests/<int:digest_id>/likes/', methods=['GET', 'POST', 'DELETE'])
+def ai_digest_likes(digest_id):
+    user = g.current_user
+    if not user and (request.method != 'GET' or request.headers.get('Authorization')):
+        return unauthorized('请先登录')
+    # Drafts, withdrawn and future issues never accept public interactions,
+    # including requests by administrators previewing unpublished content.
+    if not _public_query().filter_by(id=digest_id).first():
+        return not_found('动态不存在')
+    query = AiDigestLike.query.filter_by(digest_id=digest_id)
+    own = query.filter_by(author_id=user.id) if user else None
+    if request.method == 'POST' and not own.first():
+        if user.is_guest:
+            from ..guest import consume_limits
+            limited = consume_limits(str(user.id), [('like-minute', 5, 60), ('like-hour', 30, 3600)])
+            if limited is not None:
+                return limited
+        db.session.add(AiDigestLike(digest_id=digest_id, author_id=user.id))
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            # Concurrent retries have the same composite primary key.
+            if not own.first():
+                raise
+    elif request.method == 'DELETE':
+        own.delete(synchronize_session=False)
+        db.session.commit()
+    response = jsonify({'likes': query.count(), 'like': bool(own is not None and own.first())})
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @api.route('/ai-news-items/')

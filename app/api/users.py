@@ -6,6 +6,7 @@ import os
 import sys
 import re
 import ssl
+import secrets
 
 from flask import g, jsonify, request, current_app
 from . import api
@@ -14,12 +15,38 @@ from .. import db
 from ..models import User, Permission, Tag, Post, Role, PostType, Comment, Message, Like
 from .decorators import login_required, permission_required
 from sqlalchemy import and_
+from sqlalchemy.exc import IntegrityError
+from ..email_login import email_users, normalize_email
 from ..email import send_email
 from ..qiniu import get_token
 from qiniu import put_data
 from ..defines import NOTIFY
 
 ssl._create_default_https_context = ssl._create_unverified_context
+
+@api.route('/guest-login/', methods=['POST'])
+def guest_login():
+  from ..guest import client_address, consume_limits
+  # A retry with a valid session reuses it; never replaces a signed-in account.
+  user = g.current_user
+  if user is None:
+    role = Role.query.filter_by(name='User').first()
+    if role is None or role.has_permission(Permission.ADMIN):
+      return server_error('游客登录暂不可用，请稍后再试', True)
+    limited = consume_limits(client_address(), [('signup-minute', 3, 60), ('signup-day', 10, 86400)])
+    if limited is not None:
+      return limited
+    username = '用户{:08d}'.format(secrets.randbelow(100000000))
+    while User.query.filter_by(username=username).first():
+      username = '用户{:08d}'.format(secrets.randbelow(100000000))
+    # All fields and permissions are server-owned; accept no profile from callers.
+    user = User(id_string='guest:' + secrets.token_hex(16), username=username,
+                avatar=secrets.token_hex(16), role=role)
+    db.session.add(user)
+    db.session.commit()
+  response = jsonify({'token': user.generate_auth_token(3600 * 24 * 30), 'user': user.get_detail()})
+  response.headers['Cache-Control'] = 'no-store'
+  return response
 
 def save_file(url):
   try:
@@ -189,21 +216,25 @@ def get_user_info(user_id):
   user = User.query.get(user_id)
   if not user:
     return not_found('获取不到用户信息')
-  return jsonify(user.to_json())
+  include_email = bool(g.current_user and (g.current_user.id == user.id or g.current_user.is_administrator()))
+  return jsonify(user.to_json(include_email=include_email))
 
 @api.route('/get-user-detail/<user_id>')
 def get_user_detail(user_id):
   user = User.query.get(user_id)
   if not user:
     return not_found('获取不到用户信息')
-  info = user.to_json()
-  if g.current_user and (g.current_user == user or g.current_user.can(Permission.ADMIN)):
+  own_or_admin = bool(g.current_user and (g.current_user.id == user.id or g.current_user.can(Permission.ADMIN)))
+  info = user.to_json(include_email=own_or_admin)
+  if own_or_admin:
     comments = user.comments
     messages = user.messages
   else:
     comments = user.comments.filter_by(hide = False)
     messages = user.messages.filter_by(hide = False)
-  comments = list(map(lambda c: c.to_json(), comments.all()))
+  from .comments import target_comments
+  comments = [c.to_json() for c in comments.all()
+              if own_or_admin or target_comments(c.post_id, c.digest_id)[0] is not None]
   messages = list(map(lambda m: m.to_json(), messages.all()))
   likes = list(map(lambda l: l.to_json(), user.likes.all()))
   info['comments'] = comments
@@ -249,20 +280,26 @@ def set_email():
   user_id = request.json.get('user_id')
   if not g.current_user.is_administrator() and g.current_user.id != user_id:
     return forbidden('非法操作', True)
-  email = request.json.get('email')
-  if not email:
+  email = normalize_email(request.json.get('email'))
+  if email is None:
     return bad_request('请填写正确的邮箱', True)
-  if User.query.filter_by(email=email).first():
+  existing = email_users(email).filter(User.id != user_id).first()
+  if existing and existing.id != user_id:
     return bad_request('该邮箱已被占用，如果您是该邮箱所有者，请联系管理员', True)
-  user = User.query.get(user_id)
+  user = User.query.filter_by(id=user_id).populate_existing().with_for_update().first()
   if not user:
     return bad_request('未找到用户信息', True)
+  if normalize_email(user.email) != email:
+    user.email_version = (user.email_version or 0) + 1
+    user.email_verified_at = None
   user.email = email
   try:
     db.session.add(user)
     db.session.commit()
-  except Exception as e:
-    print(e)
+  except IntegrityError:
+    db.session.rollback()
+    return bad_request('该邮箱已被占用，如果您是该邮箱所有者，请联系管理员', True)
+  except Exception:
     db.session.rollback()
     response = server_error('设置邮箱失败，请重试', True)
     return response
@@ -273,5 +310,5 @@ def set_email():
 def search_user():
   keyword = request.json.get('keyword', '')
   user_list = User.query.filter(User.username.like('%{}%'.format(keyword))).all()
-  user_list = list(map(lambda x: x.to_json(), user_list))
+  user_list = list(map(lambda x: x.to_json(include_email=True), user_list))
   return jsonify({ 'list': user_list })

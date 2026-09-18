@@ -1,6 +1,14 @@
 """Persistent AI digest, provenance and newsletter records."""
 from . import db
+from datetime import datetime
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
+
+
+class AiDigestLike(db.Model):
+    __tablename__ = 'ai_digest_likes'
+    digest_id = db.Column(db.Integer(), db.ForeignKey('ai_digests.id', ondelete='CASCADE'), primary_key=True)
+    author_id = db.Column(db.Integer(), db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True, index=True)
+    timestamp = db.Column(db.DateTime(), nullable=False, default=datetime.utcnow)
 
 
 class AiDigestSettings(db.Model):

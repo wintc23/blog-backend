@@ -29,6 +29,8 @@ def get_base_link_list():
 @api.route('/add-link/', methods = ["POST"])
 @login_required
 def add_link():
+  if g.current_user.is_guest:
+    return forbidden('请使用 QQ 或 GitHub 登录后申请友链', True)
   params = {}
   params['title'] = request.json.get('title', '')
   if not params['title']:
@@ -72,6 +74,8 @@ def check_link(link_id):
 @api.route('/update-link/', methods = ["POST"])
 @login_required
 def update_link():
+  if g.current_user.is_guest:
+    return forbidden('请使用 QQ 或 GitHub 登录后修改友链', True)
   link_id = request.json.get('id', None)
   if not link_id:
     return bad_request("更新失败，友链不存在", True)

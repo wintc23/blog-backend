@@ -31,6 +31,9 @@ class PersonalProfileTests(unittest.TestCase):
 
     self.context = self.app.app_context()
     self.context.push()
+    from app.media_models import MediaAsset, MediaReference
+    MediaAsset.__table__.create(db.engine)
+    MediaReference.__table__.create(db.engine)
     PersonalProfile.__table__.create(db.engine)
     Role.__table__.create(db.engine)
     User.__table__.create(db.engine)

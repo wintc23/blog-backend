@@ -40,6 +40,9 @@ class DigestTests(unittest.TestCase):
         self.app.before_request_funcs.setdefault('api', []).append(identity)
         self.context = self.app.app_context()
         self.context.push()
+        from app.media_models import MediaAsset, MediaReference
+        MediaAsset.__table__.create(db.engine)
+        MediaReference.__table__.create(db.engine)
         with db.engine.begin() as connection:
             with Operations.context(MigrationContext.configure(connection)):
                 migration().upgrade()
@@ -240,7 +243,7 @@ class DigestTests(unittest.TestCase):
     def test_migration_matches_models_and_reverses(self):
         db.session.remove()
         tables = set(inspect(db.engine).get_table_names())
-        self.assertEqual(len(tables), 8)
+        self.assertEqual(len(set(tables) - {'media_assets', 'media_references'}), 8)
         for name in tables:
             self.assertEqual(set(db.metadata.tables[name].columns.keys()),
                 {column['name'] for column in inspect(db.engine).get_columns(name)})
@@ -248,7 +251,7 @@ class DigestTests(unittest.TestCase):
             with Operations.context(MigrationContext.configure(connection)):
                 migration('20260916_digest_reads').downgrade()
                 migration().downgrade()
-        self.assertEqual(inspect(db.engine).get_table_names(), [])
+        self.assertEqual(set(inspect(db.engine).get_table_names()), {'media_assets', 'media_references'})
 
 
 if __name__ == '__main__':

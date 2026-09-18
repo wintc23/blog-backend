@@ -49,6 +49,9 @@ class GenerationTests(unittest.TestCase):
         self.app.before_request_funcs.setdefault('api', []).append(identity)
         self.context = self.app.app_context()
         self.context.push()
+        from app.media_models import MediaAsset, MediaReference
+        MediaAsset.__table__.create(db.engine)
+        MediaReference.__table__.create(db.engine)
         with db.engine.begin() as connection:
             with Operations.context(MigrationContext.configure(connection)):
                 migration('20260916_ai_digest').upgrade()

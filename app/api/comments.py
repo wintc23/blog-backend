@@ -8,28 +8,80 @@ from sqlalchemy import or_
 from ..email import send_email
 from ..defines import NOTIFY
 from ..socket import notify
+from ..rich_content import validate_body
+
+
+def target_comments(post_id=None, digest_id=None):
+  admin = g.current_user and g.current_user.can(Permission.ADMIN)
+  if bool(post_id) == bool(digest_id):
+    return None, None
+  if digest_id:
+    from .ai_digest import _public_query
+    from ..digest_models import AiDigest
+    target = AiDigest.query.get(digest_id) if admin else _public_query().filter_by(id=digest_id).first()
+    return target, Comment.query.filter_by(digest_id=digest_id)
+  target = Post.query.get(post_id)
+  if target and not admin and (target.hide or target.type.special):
+    target = None
+  return target, Comment.query.filter_by(post_id=post_id)
+
+
+def visible_comments(query):
+  if not g.current_user or not g.current_user.can(Permission.ADMIN):
+    query = query.filter(or_(Comment.hide == False, Comment.author == g.current_user))
+  return [comment.to_json() for comment in query.order_by(Comment.timestamp, Comment.id).all()]
+
+
+@api.route('/comments/')
+def public_comments():
+  try:
+    post_id = int(request.args['post_id']) if request.args.get('post_id') else None
+    digest_id = int(request.args['digest_id']) if request.args.get('digest_id') else None
+  except (TypeError, ValueError):
+    return bad_request('评论对象不正确', True)
+  target, query = target_comments(post_id, digest_id)
+  if target is None:
+    return not_found('查询不到该内容', True)
+  rows = visible_comments(query)
+  response = jsonify({'comments': rows, 'comment_times': len(rows)})
+  response.headers['Cache-Control'] = 'no-store'
+  return response
 
 @api.route('/add-comment/', methods = ['POST'])
 @login_required
 def add_comment():
   params = {}
-  body = request.json.get('body', '')
-  if not body:
-    return bad_request('评论内容不能为空', True)
-  post_id = request.json.get('post_id', '')
-  if not post_id:
-    return bad_request('请求错误！', True)
-  post = Post.query.get(post_id)
-  if not post:
-    return bad_request('请求错误！', True)
+  data = request.get_json(silent=True)
+  if not isinstance(data, dict):
+    return bad_request('请求格式不正确', True)
+  try:
+    body = validate_body(data.get('body', ''))
+  except ValueError as error:
+    return bad_request(str(error), True)
+  post_id, digest_id = data.get('post_id'), data.get('digest_id')
+  if any(value is not None and (type(value) is not int or value < 1) for value in (post_id, digest_id)):
+    return bad_request('评论对象不正确', True)
+  post, query = target_comments(post_id, digest_id)
+  if post is None:
+    return not_found('查询不到该内容', True)
   params['body'] = body
   params['post_id'] = post_id
+  params['digest_id'] = digest_id
   params['author'] = g.current_user
-  response_id = request.json.get('response_id', '')
+  response_id = data.get('response_id')
+  if response_id and (type(response_id) is not int or response_id < 1):
+    return bad_request('回复对象不正确', True)
   if response_id:
     response = Comment.query.get(response_id)
+    if (not response or response.post_id != post_id or response.digest_id != digest_id or
+        (response.hide and response.author_id != g.current_user.id and not g.current_user.can(Permission.ADMIN))):
+      return not_found('查询不到该评论', True)
     if response:
       params['response'] = response
+  from ..guest import limit_guest_post
+  limited = limit_guest_post(g.current_user, body)
+  if limited is not None:
+    return limited
   params['hide'] = True
   if g.current_user and g.current_user.can(Permission.ADMIN):
     params['hide'] = False
@@ -39,15 +91,11 @@ def add_comment():
   from .stat import record_business_event
   record_business_event('comment.replied' if response_id else 'comment.created', {
     'comment_id': comment.id,
-    'post_id': post.id,
+    'post_id': post_id, 'digest_id': digest_id,
   })
-  if g.current_user and g.current_user.can(Permission.ADMIN):
-    comments = post.comments.all()
-  else:
-    hideCondition = or_(Comment.hide == False, Comment.author == g.current_user)
-    comments = post.comments.filter(hideCondition).all()
+  comments = visible_comments(query)
   domain = current_app.config["DOMAIN"]
-  url = '{}/article/{}?commentId={}'.format(domain, post_id, comment.id)
+  url = '{}/{}/{}?commentId={}#comments'.format(domain, 'ai-news' if digest_id else 'article', digest_id or post_id, comment.id)
   # 给管理员推送消息、邮件
   notify_data = {
     'url': url,
@@ -75,8 +123,31 @@ def add_comment():
       if not notify_status and user.email:
         send_email(user.email, '评论回复', mail_type = NOTIFY["COMMENT_REPLY"], **notify_data)
 
-  comments = list(map(lambda comment: comment.to_json(), comments))
   return jsonify({ "comment_times": len(comments), 'comments': comments })
+
+
+@api.route('/comments/<int:comment_id>/', methods=['PUT'])
+@login_required
+def edit_comment(comment_id):
+  comment = Comment.query.get(comment_id)
+  if not comment or (comment.author_id != g.current_user.id and not g.current_user.can(Permission.ADMIN)):
+    return not_found('查询不到该评论', True)
+  target, _ = target_comments(comment.post_id, comment.digest_id)
+  if target is None:
+    return not_found('查询不到该内容', True)
+  try:
+    data = request.get_json(silent=True)
+    body = validate_body(data.get('body') if isinstance(data, dict) else None)
+  except ValueError as error:
+    return bad_request(str(error), True)
+  from ..guest import limit_guest_post
+  limited = limit_guest_post(g.current_user, body)
+  if limited is not None:
+    return limited
+  comment.body = body
+  comment.hide = not g.current_user.can(Permission.ADMIN)
+  db.session.commit()
+  return jsonify(comment.to_json())
 
 @api.route('/get-comments/', methods = ['POST'])
 @permission_required(Permission.ADMIN)
@@ -106,7 +177,16 @@ def delete_comment (comment_id):
     return not_found('未找到该评论', True)
   from .stat import record_business_event
   record_business_event('comment.deleted', {'comment_id': comment.id, 'post_id': comment.post_id})
-  db.session.delete(comment)
+  # Delete the reply subtree too, so no hidden orphan content/assets remain.
+  pending = [comment]
+  seen = set()
+  while pending:
+    item = pending.pop()
+    if item.id in seen:
+      continue
+    seen.add(item.id)
+    pending.extend(item.comments.all())
+    db.session.delete(item)
   return jsonify({ 'message': '删除评论成功', 'notify': True })
 
 @api.route('/set-comment-show/<comment_id>')

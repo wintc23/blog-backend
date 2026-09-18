@@ -166,15 +166,28 @@ def upload_image(asset):
     from qiniu import put_file
     from flask import current_app
     from ..qiniu import get_token
+    from .. import db
+    from ..media_models import MediaAsset
+    from datetime import datetime, timedelta
+    from uuid import uuid4
     path = artifact_root() / (asset['sha256'] + '.png')
     if not path.is_file():
         raise GenerationError('asset_missing', '已生成图片文件缺失，请恢复资产目录后重试')
     if hashlib.sha256(path.read_bytes()).hexdigest() != asset['sha256']:
         raise GenerationError('asset_corrupt', '已生成图片校验失败')
-    key = 'generated-content/' + asset['sha256'] + '.png'
-    result, info = put_file(get_token(key), key, str(path), mime_type='image/png')
+    asset_id = uuid4().hex
+    key = 'managed-images/' + asset_id + '.png'
+    url = current_app.config['QI_NIU_LINK_URL'].rstrip('/') + '/' + key
+    record = MediaAsset(id=asset_id, storage_key=key, url=url, mime_type='image/png',
+        byte_size=path.stat().st_size, width=asset['width'], height=asset['height'],
+        delete_after=datetime.utcnow() + timedelta(hours=24))
+    db.session.add(record)
+    db.session.commit()
+    result, info = put_file(get_token(key, max_size=20 * 1024 * 1024, mime_limit='image/png'), key, str(path), mime_type='image/png')
     if not result or info.status_code != 200:
         raise GenerationError('upload_failed', '图片上传七牛失败', True)
-    return {'url': current_app.config['QI_NIU_LINK_URL'].rstrip('/') + '/' + key,
+    record.status = 'ready'
+    db.session.commit()
+    return {'url': url,
             'width': asset['width'], 'height': asset['height'], 'sha256': asset['sha256'],
             'credit': 'AI 生成概念插图', 'rights': 'ai_generated'}
