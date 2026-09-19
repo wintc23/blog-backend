@@ -506,9 +506,33 @@ def image_task_download(task_id):
 @permission_required(Permission.ADMIN)
 @endpoint
 def image_tools_admin_jobs():
-    tasks = ImageTask.query.filter_by(deleted_at=None).filter(ImageTask.status != 'draft').order_by(ImageTask.created_at.desc()).limit(100).all()
-    return jsonify(model=provider.IMAGE_MODEL, limits=settings_json(),
-                   jobs=[dict(id=t.id, owner_id=t.owner_id, name=json.loads(t.snapshot_json)['name'], status=t.status, created_at=t.created_at.isoformat() + 'Z') for t in tasks])
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = min(100, max(1, int(request.args.get('per_page', 20))))
+    except (TypeError, ValueError):
+        raise ToolError('分页参数无效')
+    query = ImageTask.query.filter_by(deleted_at=None).filter(ImageTask.status != 'draft')
+    total = query.count()
+    tasks = query.order_by(ImageTask.created_at.desc(), ImageTask.id).offset((page - 1) * per_page).limit(per_page).all()
+    owners = {u.id: u for u in User.query.filter(User.id.in_({t.owner_id for t in tasks})).all()} if tasks else {}
+    return jsonify(model=provider.IMAGE_MODEL, limits=settings_json(), total=total, page=page, per_page=per_page,
+                   jobs=[dict(id=t.id, owner_id=t.owner_id, owner_name=owners[t.owner_id].username if t.owner_id in owners else '已删除账号',
+                              name=json.loads(t.snapshot_json)['name'], status=t.status, created_at=t.created_at.isoformat() + 'Z') for t in tasks])
+
+
+@api.route('/image-tools/admin/jobs/<task_id>/')
+@permission_required(Permission.ADMIN)
+@endpoint
+def image_tools_admin_job(task_id):
+    task = ImageTask.query.filter_by(id=task_id, deleted_at=None).filter(ImageTask.status != 'draft').first()
+    if not task:
+        raise ToolError('任务不存在', 404)
+    owner = User.query.get(task.owner_id)
+    value = task_json(task)
+    value.pop('quota', None)
+    value['config'] = json.loads(task.snapshot_json)
+    return jsonify(task=value, model=provider.IMAGE_MODEL,
+                   owner=dict(id=task.owner_id, username=owner.username if owner else '已删除账号', is_guest=bool(owner and owner.is_guest)))
 
 
 @api.route('/image-tools/admin/limits/', methods=['GET', 'PUT'])
