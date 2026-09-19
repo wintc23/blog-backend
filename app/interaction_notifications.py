@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from flask import current_app, render_template
 from flask_mail import Message
 from . import db, mail
+from .mail_branding import mail_branding
 
 
 class InteractionNotification(db.Model):
@@ -53,10 +54,10 @@ def deliver(row):
         recipient = current_app.config.get('FLASK_ADMIN')
         if not recipient:
             raise ValueError('FLASK_ADMIN is required')
-        message = Message('{} {}'.format(current_app.config.get('MAIL_SUBJECT_PREFIX') or '', row.title).strip(),
-                          sender=current_app.config['MAIL_SENDER'], recipients=[recipient])
+        site_name, sender = mail_branding()
+        message = Message('[{}] {}'.format(site_name, row.title), sender=sender, recipients=[recipient])
         message.body = '{}\n\n{}'.format(row.body, url)
-        message.html = render_template('interaction-email.html', title=row.title, body=row.body, url=url)
+        message.html = render_template('interaction-email.html', title=row.title, body=row.body, url=url, site_name=site_name)
         mail.send(message)
     else:
         from lark_bridge.lark import Lark

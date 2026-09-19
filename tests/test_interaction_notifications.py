@@ -18,7 +18,9 @@ class NotificationTests(unittest.TestCase):
 
     def setUp(self):
         content_fixture.ContentLikesTests.setUp(self)
-        self.app.config.update(FLASK_ADMIN='owner@example.test', MAIL_SENDER='site@example.test')
+        from app.models import PersonalProfile
+        PersonalProfile.__table__.create(db.engine)
+        self.app.config.update(SITE_NAME='测试站点', FLASK_ADMIN='owner@example.test', MAIL_SENDER='site@example.test')
 
     def tearDown(self):
         content_fixture.ContentLikesTests.tearDown(self)
@@ -121,6 +123,8 @@ class NotificationTests(unittest.TestCase):
             deliver(Notice.query.filter_by(channel='email').one())
             message = send.call_args[0][0]
             self.assertEqual(message.recipients, ['owner@example.test'])
+            self.assertEqual(message.subject, '[测试站点] 收到点赞')
+            self.assertEqual(message.sender, '测试站点 <site@example.test>')
             self.assertIn('&lt;script&gt;', message.html)
             self.assertIn('https://example.test/moments/one', message.body)
         with patch.dict(os.environ, {'LARK_BRIDGE_APP_ID': 'app', 'LARK_BRIDGE_OWNER_OPEN_ID': 'owner'}), patch('lark_bridge.lark.Lark.send_card') as send:

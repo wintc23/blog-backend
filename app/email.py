@@ -3,11 +3,14 @@ from flask import current_app, render_template
 from flask_mail import Message
 from . import mail
 from .defines import NOTIFY
+from .mail_branding import mail_branding
 import time
 def send_async_email(app, data, to, subject):
   with app.app_context():
-    subject = "{} {}".format(app.config['MAIL_SUBJECT_PREFIX'], subject)
-    msg = Message(subject, sender=app.config['MAIL_SENDER'], recipients=[to])
+    site_name, sender = mail_branding()
+    subject = "[{}] {}".format(site_name, subject)
+    msg = Message(subject, sender=sender, recipients=[to])
+    data.update(site_name=site_name, site_url=app.config.get("DOMAIN") or "")
     msg.body = ''
     msg.html = render_template('email.html', **data)
     mail.send(msg)

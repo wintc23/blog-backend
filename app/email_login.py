@@ -11,7 +11,8 @@ from html import escape
 from flask import current_app
 from sqlalchemy import func
 
-from .models import PersonalProfile, User
+from .models import User
+from .mail_branding import mail_branding
 
 CODE_TTL = 300
 SEND_COOLDOWN = 60
@@ -45,10 +46,8 @@ def send_login_code(email, code):
     Transport errors are handled by the caller without logging message contents.
     """
     config = current_app.config
-    profile = PersonalProfile.query.get(1)
-    site_name = (profile.site_name if profile else '') or config.get('DOMAIN') or '本站'
-    sender = config.get('MAIL_SENDER') or config.get('MAIL_USERNAME')
-    if not config.get('MAIL_SERVER') or not sender or not config.get('MAIL_USERNAME') or not config.get('MAIL_PASSWORD'):
+    site_name, sender = mail_branding()
+    if not config.get('MAIL_SERVER') or not sender[1] or not config.get('MAIL_USERNAME') or not config.get('MAIL_PASSWORD'):
         raise RuntimeError('SMTP is not configured')
     message = EmailMessage()
     message['Subject'] = '{} · 登录验证码'.format(site_name)

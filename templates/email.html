@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>沐码小站</title>
+    <title>{{ site_name }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style type="text/css">
       .username {
@@ -44,7 +44,7 @@
   {% elif mail_type == 8 %}
   {% endif %}
   <div style="margin-top: 20px">
-    欢迎访问我的个人小站：<a href="https://wintc.top">沐码小站</a>
+    欢迎访问：<a href="{{ site_url }}">{{ site_name }}</a>
   </div>
   </body>
 </html>

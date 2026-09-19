@@ -223,6 +223,7 @@ class EmailLoginTests(unittest.TestCase):
                 for expected in ('reader@example.test', '数据库中的测试站名', '012345', '5 分钟'):
                     self.assertIn(expected, body)
             self.assertIn('数据库中的测试站名', str(message['Subject']))
+            self.assertIn('数据库中的测试站名', str(message['From']))
             self.assertEqual(transport.call_args[1]['timeout'], 10)
             self.assertTrue(transport.call_args[1]['context'].check_hostname)
 

@@ -9,6 +9,7 @@ class Config:
   MAIL_USE_SSL = True
   MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
   MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
+  SITE_NAME = os.environ.get('SITE_NAME')
   MAIL_SENDER = os.environ.get('MAIL_SENDER')
   MAIL_SUBJECT_PREFIX = os.environ.get('MAIL_SUBJECT_PREFIX')
   FLASK_ADMIN = os.environ.get('FLASK_ADMIN')
