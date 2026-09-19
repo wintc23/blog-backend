@@ -88,6 +88,13 @@ def asset_json(asset, share_hash=None):
                 url='/image-assets/{}/?ticket={}'.format(asset.id, ticket))
 
 
+def share_is_active(task):
+    if not task or task.deleted_at or not task.share_hash or not task.share_until or task.share_until <= datetime.utcnow():
+        return False
+    owner = User.query.get(task.owner_id)
+    return bool(owner and owner.can(Permission.ADMIN))
+
+
 def task_json(task):
     config = json.loads(task.snapshot_json)
     assets = ImageToolAsset.query.filter_by(task_id=task.id).order_by(ImageToolAsset.position, ImageToolAsset.created_at).all()
@@ -96,7 +103,7 @@ def task_json(task):
         options=json.loads(task.options_json), status=task.status, created_at=task.created_at.isoformat() + 'Z',
         inputs=[asset_json(a) for a in assets if a.kind == 'input'], outputs=[asset_json(a) for a in assets if a.kind == 'output'],
         items=[dict(id=i.id, source_id=i.source_id, output_id=i.output_id, previous_id=i.previous_id, position=i.position, status=i.status, error=i.error) for i in items],
-        sharing=bool(task.share_hash and task.share_until > datetime.utcnow()), quota=quota_for(g.current_user))
+        sharing=share_is_active(task), quota=quota_for(g.current_user))
 
 
 def settings_json():
@@ -423,7 +430,7 @@ def image_upload_session():
 
 
 @api.route('/image-tasks/<task_id>/share/', methods=['POST', 'DELETE'])
-@login_required
+@permission_required(Permission.ADMIN)
 @endpoint
 def image_task_share(task_id):
     task = task_for_owner(task_id, True)
@@ -448,7 +455,7 @@ def image_task_share(task_id):
 def image_share(token):
     digest = hashlib.sha256(token.encode()).hexdigest()
     task = ImageTask.query.filter_by(share_hash=digest, deleted_at=None).first()
-    if not task or task.share_until <= datetime.utcnow():
+    if not share_is_active(task):
         raise ToolError('分享已过期或被取消', 404)
     ids = json.loads(task.share_assets_json)
     assets = {a.id: a for a in ImageToolAsset.query.filter(ImageToolAsset.id.in_(ids), ImageToolAsset.task_id == task.id).all()}
@@ -467,7 +474,7 @@ def image_asset(asset_id):
     task = ImageTask.query.get(asset.task_id) if asset else None
     if ticket.get('asset') != asset_id or not task or task.deleted_at:
         raise ToolError('图片不存在', 404)
-    if ticket.get('share') and (ticket['share'] != task.share_hash or not task.share_until or task.share_until <= datetime.utcnow() or asset_id not in json.loads(task.share_assets_json or '[]')):
+    if ticket.get('share') and (ticket['share'] != task.share_hash or not share_is_active(task) or asset_id not in json.loads(task.share_assets_json or '[]')):
         raise ToolError('分享已失效', 403)
     if request.args.get('download') == '1':
         record('download', task, count=1)

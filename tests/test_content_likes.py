@@ -42,7 +42,7 @@ class ContentLikesTests(unittest.TestCase):
         self.assertEqual(self.client.get(path).status_code, 404)
         self.assertEqual(self.client.post('/api/life-moments/missing/likes/', headers=self.headers).status_code, 404)
         ImageTool.query.filter_by(slug='cartoon').one().enabled = True; db.session.commit()
-        task_id = self.create(); task = ImageTask.query.get(task_id); token = 'private-random-share-token'
+        task_id = self.create(); task = ImageTask.query.get(task_id); task.owner_id = self.owner_id; token = 'private-random-share-token'
         task.share_hash = hashlib.sha256(token.encode()).hexdigest(); task.share_until = datetime.utcnow() + timedelta(days=1); db.session.commit()
         path = '/api/image-shares/' + token + '/likes/'
         self.assertEqual(self.client.post(path, headers=self.headers).get_json(), {'likes': 1, 'like': True})

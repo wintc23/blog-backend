@@ -138,6 +138,7 @@ class ImageToolsTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(len(result.get_json()['files']), 2)
         self.assertTrue(all(f['url'].startswith('https://s3.') for f in result.get_json()['files']))
+        self.regular.role = self.owner.role; db.session.commit()
         share = self.client.post('/api/image-tasks/{}/share/'.format(task_id), headers=self.headers, json={'asset_ids': [task['outputs'][0]['id']]}).get_json()
         public = self.client.get('/api/image-shares/{}/'.format(share['token'])).get_json()
         self.assertEqual(len(public['outputs']), 1)

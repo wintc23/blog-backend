@@ -1,11 +1,10 @@
 """Public content reactions share the existing guest-login and like limits."""
 import hashlib
 import json
-from datetime import datetime
 from flask import g, jsonify, request
 from sqlalchemy.exc import IntegrityError
 from . import api
-from .image_tools import endpoint, ToolError
+from .image_tools import endpoint, ToolError, share_is_active
 from .. import db
 from ..models import LifeMoment, StatEvent
 from ..content_like_models import ContentLike
@@ -53,6 +52,6 @@ def tool_likes(slug):
 def share_likes(token):
     digest = hashlib.sha256(token.encode()).hexdigest()
     task = ImageTask.query.filter_by(share_hash=digest, deleted_at=None).first()
-    if not task or not task.share_until or task.share_until <= datetime.utcnow():
+    if not share_is_active(task):
         raise ToolError('分享已过期或被取消', 404)
     return react('image_share', digest)
