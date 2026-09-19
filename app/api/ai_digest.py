@@ -136,7 +136,8 @@ def ai_digest_likes(digest_id):
         return unauthorized('请先登录')
     # Drafts, withdrawn and future issues never accept public interactions,
     # including requests by administrators previewing unpublished content.
-    if not _public_query().filter_by(id=digest_id).first():
+    digest = _public_query().filter_by(id=digest_id).first()
+    if not digest:
         return not_found('动态不存在')
     query = AiDigestLike.query.filter_by(digest_id=digest_id)
     own = query.filter_by(author_id=user.id) if user else None
@@ -148,6 +149,8 @@ def ai_digest_likes(digest_id):
                 return limited
         db.session.add(AiDigestLike(digest_id=digest_id, author_id=user.id))
         try:
+            from ..interaction_notifications import enqueue
+            enqueue('like:digest:' + str(digest_id), user, '收到点赞', '赞了 AI 动态「{}」'.format(digest.title), '/ai-news/' + str(digest_id))
             db.session.commit()
         except IntegrityError:
             db.session.rollback()

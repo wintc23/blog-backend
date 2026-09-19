@@ -97,6 +97,9 @@ def add_message():
     params['hide'] = False
   msg = Message(**params)
   db.session.add(msg)
+  db.session.flush()
+  from ..interaction_notifications import enqueue
+  enqueue('message:' + str(msg.id), g.current_user, '收到留言回复' if response_id else '收到留言', body, '/message/{}?newId={}'.format(params.get('root_response_id') or msg.id, msg.id))
   db.session.commit()
   from .stat import record_business_event
   record_business_event('message.replied' if response_id else 'message.created', {
@@ -108,7 +111,6 @@ def add_message():
   domain = current_app.config["DOMAIN"]
   root_id = params.get('root_response_id', '') or msg.id
   url = '{}/message/{}?newId={}'.format(domain, root_id, msg.id)
-  reciver = current_app.config['FLASK_ADMIN']
   notify_data = {
     "url": url,
     'content': body,
@@ -122,7 +124,7 @@ def add_message():
       user = role.users.first()
       if user:
         notify(user.id, { **notify_data, 'type': NOTIFY["MESSAGE"] })
-    send_email(reciver, '新增留言', mail_type = NOTIFY['MESSAGE'], **notify_data)
+    # Owner email and lark notifications are delivered by the durable outbox.
 
   # 给被回复者推送邮件
   if response:
@@ -130,7 +132,7 @@ def add_message():
     user = User.query.get(user_id)
     if user and user != g.current_user:
       notify_status = notify(user_id, { 'type': NOTIFY["MESSAGE_REPLY"], **notify_data })
-      if not notify_status and user.email:
+      if not notify_status and user.email and not user.is_administrator():
         send_email(user.email, '留言回复', mail_type = NOTIFY["MESSAGE_REPLY"], **notify_data)
   return jsonify(msg.to_json())
 

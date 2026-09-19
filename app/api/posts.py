@@ -314,21 +314,13 @@ def like_post(post_id):
         return limited
     like = Like(post_id = post_id, author = g.current_user)
     db.session.add(like)
+    from ..interaction_notifications import enqueue
+    enqueue('like:post:' + str(post_id), g.current_user, '收到点赞', '赞了文章「{}」'.format(post.title), '/article/' + str(post_id))
     db.session.commit()
     from .stat import record_business_event
     record_business_event('post.like_created', {'post_id': post.id})
     json = { 'likes': post.likes.count() }
     json['like'] = True
-    if not g.current_user.is_administrator():
-      reciver = current_app.config['FLASK_ADMIN']
-      domain = current_app.config["DOMAIN"]
-      url = '{}/article/{}'.format(domain, post_id)
-      send_email(reciver,
-        '文章点赞',
-        mail_type = NOTIFY['LIKE'],
-        username = g.current_user.username,
-        post_title = post.title,
-        url = url)
   else:
     # Refresh the snapshot after a concurrent like completed while we waited.
     db.session.commit()

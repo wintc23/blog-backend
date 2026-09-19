@@ -10,9 +10,10 @@ from ..models import LifeMoment, StatEvent
 from ..content_like_models import ContentLike
 from ..image_tool_models import ImageTool, ImageTask
 from ..guest import consume_limits
+from ..interaction_notifications import enqueue
 
 
-def react(kind, target_id):
+def react(kind, target_id, title, path):
     user = g.current_user
     if not user and (request.method != 'GET' or request.headers.get('Authorization')):
         raise ToolError('请先登录', 401)
@@ -24,7 +25,9 @@ def react(kind, target_id):
             if limited is not None: return limited
         db.session.add(ContentLike(kind=kind, target_id=target_id, author_id=user.id))
         db.session.add(StatEvent(name='content.like', author_id=user.id, params=json.dumps({'target': kind})))
-        try: db.session.commit()
+        try:
+            enqueue('like:{}:{}'.format(kind, target_id), user, '收到点赞', title, path)
+            db.session.commit()
         except IntegrityError:
             db.session.rollback()
             if not own.first(): raise
@@ -36,15 +39,17 @@ def react(kind, target_id):
 @api.route('/life-moments/<moment_id>/likes/', methods=['GET', 'POST', 'DELETE'])
 @endpoint
 def moment_likes(moment_id):
-    if not LifeMoment.query.get(moment_id): raise ToolError('动态不存在', 404)
-    return react('moment', moment_id)
+    moment = LifeMoment.query.get(moment_id)
+    if not moment: raise ToolError('动态不存在', 404)
+    return react('moment', moment_id, '赞了生活动态「{}」'.format(moment.text[:100]), '/moments/' + moment_id)
 
 
 @api.route('/image-tools/<slug>/likes/', methods=['GET', 'POST', 'DELETE'])
 @endpoint
 def tool_likes(slug):
-    if not ImageTool.query.filter_by(slug=slug, enabled=True).first(): raise ToolError('工具不存在', 404)
-    return react('tool', slug)
+    tool = ImageTool.query.filter_by(slug=slug, enabled=True).first()
+    if not tool: raise ToolError('工具不存在', 404)
+    return react('tool', slug, '赞了图片工具「{}」'.format(json.loads(tool.config_json)['name']), '/tools/' + slug)
 
 
 @api.route('/image-shares/<token>/likes/', methods=['GET', 'POST', 'DELETE'])
@@ -54,4 +59,4 @@ def share_likes(token):
     task = ImageTask.query.filter_by(share_hash=digest, deleted_at=None).first()
     if not share_is_active(task):
         raise ToolError('分享已过期或被取消', 404)
-    return react('image_share', digest)
+    return react('image_share', digest, '赞了您的生图分享', '/tools/tasks/' + task.id)

@@ -38,6 +38,8 @@ class GuestLoginTests(unittest.TestCase):
         MediaReference.__table__.create(db.engine)
         for model in (Role, User, GuestRateLimit, PostType, Post, Comment, Message, Like, StatEvent):
             model.__table__.create(db.engine)
+        from app.interaction_notifications import InteractionNotification
+        InteractionNotification.__table__.create(db.engine)
         Role.insert_roles()
         owner = User(id_string='github-owner', username='owner', role=Role.query.filter_by(name='Administrator').one())
         regular = User(id_string='qq-user', username='member')

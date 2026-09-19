@@ -87,6 +87,9 @@ def add_comment():
     params['hide'] = False
   comment = Comment(**params)
   db.session.add(comment)
+  db.session.flush()
+  from ..interaction_notifications import enqueue
+  enqueue('comment:' + str(comment.id), g.current_user, '收到评论回复' if response_id else '收到评论', body, '/{}/{}?commentId={}'.format('ai-news' if digest_id else 'article', digest_id or post_id, comment.id))
   db.session.commit()
   from .stat import record_business_event
   record_business_event('comment.replied' if response_id else 'comment.created', {
@@ -110,9 +113,7 @@ def add_comment():
       user = role.users.first()
       if user:
         notify(user.id, { **notify_data, 'type': NOTIFY["COMMENT"] })
-    # 发邮件
-    reciver = current_app.config['FLASK_ADMIN']
-    send_email(reciver, '发表评论', mail_type = NOTIFY["COMMENT"], **notify_data)
+    # Owner email and lark notifications are delivered by the durable outbox.
 
   # 给被回复者推送消息、邮件
   if "response" in params:
@@ -120,7 +121,7 @@ def add_comment():
     user = User.query.get(user_id)
     if user and user != g.current_user:
       notify_status = notify(user_id, { 'type': NOTIFY["COMMENT_REPLY"], **notify_data })
-      if not notify_status and user.email:
+      if not notify_status and user.email and not user.is_administrator():
         send_email(user.email, '评论回复', mail_type = NOTIFY["COMMENT_REPLY"], **notify_data)
 
   return jsonify({ "comment_times": len(comments), 'comments': comments })
