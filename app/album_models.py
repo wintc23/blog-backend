@@ -35,6 +35,7 @@ class AlbumItem(db.Model):
     album_id = db.Column(db.String(32), db.ForeignKey('albums.id'), primary_key=True)
     photo_id = db.Column(db.String(32), db.ForeignKey('album_photos.id'), primary_key=True)
     position = db.Column(db.Integer, nullable=False, default=0)
+    is_public = db.Column(db.Boolean, nullable=False, default=True, server_default='1')
     added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 

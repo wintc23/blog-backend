@@ -2,13 +2,13 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
-from flask import jsonify, request
+from flask import g, jsonify, request
 from . import api
 from .decorators import permission_required
 from .errors import bad_request, not_found
 from .personal_profile import MOMENT_CATEGORIES, valid_url
 from .. import db
-from ..models import LifeMoment, Permission
+from ..models import LifeMoment, PersonalProfile, Permission
 
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
 
@@ -57,7 +57,10 @@ def moment_values(data, moment_id):
       raise ValueError('请填写有效的 HTTP 或 HTTPS 图片地址')
     if not isinstance(description, str) or len(description.strip()) > 200:
       raise ValueError('每张图片的描述不能超过 200 字')
-    normalized.append({'url': url, 'description': description.strip()})
+    is_public = picture.get('is_public', True)
+    if type(is_public) is not bool:
+      raise ValueError('图片可见性必须是公开或隐藏')
+    normalized.append({'url': url, 'description': description.strip(), **({'is_public': is_public} if 'is_public' in picture else {})})
   values['images_json'] = json.dumps(normalized, ensure_ascii=False)
   if len(values['images_json'].encode('utf-8')) > 60000:
     raise ValueError('图片地址和描述内容过长')
@@ -89,12 +92,12 @@ def get_life_moments():
     moments = query.filter(LifeMoment.date.in_(selected)).all() if selected else []
     groups = {date.isoformat(): [] for date in selected}
     for moment in moments:
-      groups[moment.date.isoformat()].append(moment.to_json())
+      groups[moment.date.isoformat()].append(moment.to_json(include_hidden=bool(g.current_user and g.current_user.can(Permission.ADMIN))))
     return jsonify({'groups': [{'date': date, 'moments': rows} for date, rows in groups.items()],
                     'total': total, 'total_dates': total_dates, 'page': page, 'per_page': per_page})
   page = min(page, max(1, (total + per_page - 1) // per_page))
   moments = query.offset((page - 1) * per_page).limit(per_page).all()
-  return jsonify({'list': [moment.to_json() for moment in moments], 'total': total, 'page': page, 'per_page': per_page})
+  return jsonify({'list': [moment.to_json(include_hidden=bool(g.current_user and g.current_user.can(Permission.ADMIN))) for moment in moments], 'total': total, 'page': page, 'per_page': per_page})
 
 
 @api.route('/life-moments/<moment_id>/')
@@ -102,7 +105,7 @@ def get_life_moment(moment_id):
   moment = LifeMoment.query.get(moment_id)
   if moment is None:
     return not_found('找不到这条动态', True)
-  return jsonify(moment.to_json())
+  return jsonify(moment.to_json(include_hidden=bool(g.current_user and g.current_user.can(Permission.ADMIN))))
 
 
 @api.route('/life-moments/', methods=['POST'])
@@ -115,7 +118,7 @@ def create_life_moment():
   moment = LifeMoment(**values)
   db.session.add(moment)
   db.session.commit()
-  return jsonify(moment.to_json()), 201
+  return jsonify(moment.to_json(include_hidden=bool(g.current_user and g.current_user.can(Permission.ADMIN)))), 201
 
 
 @api.route('/life-moments/<moment_id>/', methods=['PUT'])
@@ -132,7 +135,7 @@ def update_life_moment(moment_id):
     setattr(moment, field, value)
   moment.updated_at = datetime.utcnow()
   db.session.commit()
-  return jsonify(moment.to_json())
+  return jsonify(moment.to_json(include_hidden=bool(g.current_user and g.current_user.can(Permission.ADMIN))))
 
 
 @api.route('/life-moments/<moment_id>/', methods=['DELETE'])
@@ -141,6 +144,37 @@ def delete_life_moment(moment_id):
   moment = LifeMoment.query.get(moment_id)
   if moment is None:
     return not_found('找不到这条动态', True)
+  profile = PersonalProfile.query.get(1)
+  if profile and profile.moments_json:
+    profile.moments_json = json.dumps([row for row in json.loads(profile.moments_json) if row.get('id') != moment_id], ensure_ascii=False)
   db.session.delete(moment)
   db.session.commit()
   return jsonify({'id': moment_id, 'message': '动态已删除'})
+
+
+@api.after_request
+def private_moment_response(response):
+  if request.path.startswith(('/api/life-moments/', '/api/albums/', '/api/album-photos/')):
+    response.headers['Cache-Control'] = 'private, no-store'
+    response.vary.add('Authorization')
+  return response
+
+
+@api.route('/life-moments/<moment_id>/images/visibility/', methods=['PATCH'])
+@permission_required(Permission.ADMIN)
+def set_moment_image_visibility(moment_id):
+  moment = LifeMoment.query.filter_by(id=moment_id).with_for_update().first()
+  if moment is None:
+    return not_found('找不到这条动态', True)
+  data = request.get_json(silent=True)
+  if not isinstance(data, dict) or type(data.get('is_public')) is not bool or type(data.get('index')) is not int:
+    return bad_request('图片可见性参数不正确', True)
+  pictures = moment.pictures()
+  index = data['index']
+  if index < 0 or index >= len(pictures) or pictures[index]['url'] != data.get('url'):
+    return bad_request('图片顺序已改变，请刷新后重试', True)
+  pictures[index]['is_public'] = data['is_public']
+  moment.images_json = json.dumps(pictures, ensure_ascii=False)
+  moment.updated_at = datetime.utcnow()
+  db.session.commit()
+  return jsonify(moment.to_json(include_hidden=True))

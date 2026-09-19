@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, inspect
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app import create_app, db
-from app.models import PersonalProfile, Role, User
+from app.models import PersonalProfile, Role, User, LifeMoment
 
 
 class PersonalProfileTests(unittest.TestCase):
@@ -35,6 +35,7 @@ class PersonalProfileTests(unittest.TestCase):
     MediaAsset.__table__.create(db.engine)
     MediaReference.__table__.create(db.engine)
     PersonalProfile.__table__.create(db.engine)
+    LifeMoment.__table__.create(db.engine)
     Role.__table__.create(db.engine)
     User.__table__.create(db.engine)
     self.client = self.app.test_client()

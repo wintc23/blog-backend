@@ -216,6 +216,10 @@ class AlbumsTests(unittest.TestCase):
         with db.engine.begin() as connection:
             with Operations.context(MigrationContext.configure(connection)):
                 migration.upgrade(); migration.downgrade(); migration.upgrade()
+        spec = importlib.util.spec_from_file_location('album_visibility_migration', Path(__file__).resolve().parents[1] / 'migrations/versions/20260919_album_photo_visibility.py')
+        visibility = importlib.util.module_from_spec(spec); spec.loader.exec_module(visibility)
+        with db.engine.begin() as connection:
+            with Operations.context(MigrationContext.configure(connection)): visibility.upgrade()
         self.assertEqual(self.owner.username, 'owner')
         self.assertEqual(self.album()['visibility'], 'private')
 

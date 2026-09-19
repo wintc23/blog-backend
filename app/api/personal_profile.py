@@ -10,7 +10,7 @@ from . import api
 from .decorators import permission_required
 from .errors import bad_request
 from .. import db
-from ..models import Permission, PersonalProfile, Role
+from ..models import Permission, PersonalProfile, Role, LifeMoment
 
 
 FIELDS = {
@@ -154,7 +154,14 @@ def validate_profile(data):
 def get_personal_profile():
   profile = PersonalProfile.query.get(1)
   # A fresh installation is editable without creating data during a GET.
-  return jsonify((profile or PersonalProfile(id=1)).to_json())
+  result = (profile or PersonalProfile(id=1)).to_json()
+  # Migration backups must not expose an image hidden in the current record.
+  if result['moments']:
+    current = {moment.id: moment for moment in LifeMoment.query.filter(LifeMoment.id.in_([row['id'] for row in result['moments']])).all()}
+    result['moments'] = [current[row['id']].to_json() if row['id'] in current else row for row in result['moments']]
+  response = jsonify(result)
+  response.headers['Cache-Control'] = 'no-store'
+  return response
 
 
 @api.route('/personal-profile/', methods=['PUT'])

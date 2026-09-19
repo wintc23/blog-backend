@@ -52,23 +52,27 @@ def readable(album_id):
     return album
 
 
-def photo_json(photo, album=None):
+def photo_json(photo, album=None, is_public=True):
     owner = bool(g.current_user and g.current_user.can(Permission.ADMIN) and g.current_user.id == photo.owner_id)
     ticket = signer().dumps({'photo': photo.id, 'album': album.id if album else None,
         'version': album.version if album else None, 'owner': owner})
-    return dict(id=photo.id, name=photo.name, width=photo.width, height=photo.height, source_kind=photo.source_kind,
+    return dict(id=photo.id, name=photo.name, width=photo.width, height=photo.height, source_kind=photo.source_kind, is_public=is_public,
         url='/album-photos/{}/image/?ticket={}'.format(photo.id, ticket))
 
 
 def album_json(album, detail=False):
     items = AlbumItem.query.filter_by(album_id=album.id).order_by(AlbumItem.position, AlbumItem.photo_id).all()
+    can_view_hidden = bool(g.current_user and g.current_user.can(Permission.ADMIN) and g.current_user.id == album.owner_id)
+    if not can_view_hidden:
+        items = [item for item in items if item.is_public]
+    visibility = {item.photo_id: item.is_public for item in items}
     cover_id = album.cover_id if any(i.photo_id == album.cover_id for i in items) else items[0].photo_id if items else None
     cover = AlbumPhoto.query.get(cover_id) if cover_id else None
     result = dict(id=album.id, title=album.title, description=album.description, visibility=album.visibility, version=album.version,
-        count=len(items), editable=bool(g.current_user and g.current_user.can(Permission.ADMIN) and g.current_user.id == album.owner_id), cover=photo_json(cover, album) if cover else None,
+        count=len(items), editable=bool(g.current_user and g.current_user.can(Permission.ADMIN) and g.current_user.id == album.owner_id), cover=photo_json(cover, album, visibility[cover.id]) if cover else None,
         updated_at=album.updated_at.isoformat() + 'Z')
     if detail:
-        result['photos'] = [photo_json(photo, album) for item in items for photo in [AlbumPhoto.query.get(item.photo_id)] if photo]
+        result['photos'] = [photo_json(photo, album, item.is_public) for item in items for photo in [AlbumPhoto.query.get(item.photo_id)] if photo]
     return result
 
 
@@ -168,7 +172,7 @@ def import_photo(source):
     elif kind == 'moment':
         moment = LifeMoment.query.get(source_id)
         index = source.get('index')
-        images = moment.to_json()['images'] if moment else []
+        images = moment.pictures() if moment else []
         if type(index) is not int or index < 0 or index >= len(images): raise ToolError('动态图片不存在', 404)
         url, name = images[index]['url'], images[index].get('description') or '动态照片'
     elif kind == 'media':
@@ -200,17 +204,28 @@ def add_album_photos(album_id):
         photo = import_photo(source)
         if photo.id not in existing:
             position += 1; added += 1; existing.add(photo.id)
-            db.session.add(AlbumItem(album_id=album.id, photo_id=photo.id, position=position))
+            is_public = True
+            if source.get('type') == 'moment':
+                is_public = LifeMoment.query.get(source['id']).pictures()[source['index']].get('is_public', True)
+            db.session.add(AlbumItem(album_id=album.id, photo_id=photo.id, position=position, is_public=is_public))
     if added: record('add_photos', count=added)
     touch(album); db.session.commit()
     return jsonify(album_json(album, True))
 
 
-@api.route('/albums/<album_id>/photos/<photo_id>/', methods=['DELETE'])
+@api.route('/albums/<album_id>/photos/<photo_id>/', methods=['PATCH', 'DELETE'])
 @permission_required(Permission.ADMIN)
 @endpoint
 def remove_album_photo(album_id, photo_id):
     album = owned(album_id, True)
+    if request.method == 'PATCH':
+        data = body()
+        if type(data.get('is_public')) is not bool: raise ToolError('图片可见性参数不正确')
+        item = AlbumItem.query.filter_by(album_id=album.id, photo_id=photo_id).first()
+        if not item: raise ToolError('图片不在当前画册', 404)
+        item.is_public = data['is_public']
+        touch(album); db.session.commit()
+        return jsonify(album_json(album, True))
     AlbumItem.query.filter_by(album_id=album.id, photo_id=photo_id).delete()
     if album.cover_id == photo_id: album.cover_id = None
     touch(album); db.session.commit()
@@ -228,6 +243,8 @@ def album_photo_image(photo_id):
     if album_id:
         album = Album.query.get(album_id)
         if not album or not AlbumItem.query.filter_by(album_id=album_id, photo_id=photo_id).first(): raise ToolError('图片已从画册移除', 404)
+        item = AlbumItem.query.filter_by(album_id=album_id, photo_id=photo_id).first()
+        if not ticket.get('owner') and not item.is_public: raise ToolError('图片已隐藏', 403)
         if not ticket.get('owner') and (album.visibility != 'public' or album.version != ticket.get('version')): raise ToolError('画册已更新或不再公开', 403)
     elif not ticket.get('owner'): raise ToolError('没有图片访问权限', 403)
     url = cloud.signed_url(photo.cloud_key) if photo.cloud_key else photo.url
@@ -255,7 +272,7 @@ def album_sources():
         query = LifeMoment.query.filter(LifeMoment.image_url != '').order_by(LifeMoment.date.desc(), LifeMoment.created_at.desc(), LifeMoment.id)
         total = query.count(); rows = []
         for moment in query.offset((page - 1) * 6).limit(6):
-            for index, image in enumerate(moment.to_json()['images']):
+            for index, image in enumerate(moment.pictures()):
                 rows.append(dict(id='{}:{}'.format(moment.id, index), source={'type': 'moment', 'id': moment.id, 'index': index}, url=image['url'], name=image.get('description') or moment.date.isoformat(), width=0, height=0))
         size = 6
     else: raise ToolError('图片来源不正确')

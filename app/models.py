@@ -301,14 +301,18 @@ class LifeMoment(db.Model):
   updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
   __table_args__ = (db.Index('ix_life_moments_chronology', 'date', 'occurred_at', 'created_at', 'id'),)
 
-  def to_json(self):
+  def pictures(self):
+    return json.loads(self.images_json) if self.images_json is not None else ([{'url': self.image_url, 'description': self.image_alt or ''}] if self.image_url else [])
+
+  def to_json(self, include_hidden=False):
+    images = [picture for picture in self.pictures() if include_hidden or picture.get('is_public', True)]
+    cover = images[0] if images else {}
     return {
       'id': self.id, 'date': self.date.isoformat(), 'category': self.category,
-      'text': self.text, 'image_url': self.image_url,
-      'image_alt': self.image_alt, 'location': self.location,
+      'text': self.text, 'image_url': cover.get('url', ''),
+      'image_alt': cover.get('description', ''), 'location': self.location,
       'occurred_at': self.occurred_at.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=8))).isoformat() if self.occurred_at else None,
-      'images': json.loads(self.images_json) if self.images_json is not None else
-        ([{'url': self.image_url, 'description': self.image_alt or ''}] if self.image_url else []),
+      'images': images,
     }
 
 
