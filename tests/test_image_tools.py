@@ -169,6 +169,33 @@ class ImageToolsTests(unittest.TestCase):
         item = ImageToolItem.query.first(); item.status = 'running'; item.lease_until = datetime.utcnow() - timedelta(seconds=1); db.session.commit()
         recover(); self.assertEqual(ImageToolItem.query.first().status, 'uncertain')
 
+    def test_history_preview_prefers_output_and_stays_owner_scoped(self):
+        task_id = self.create()
+        source_id = self.upload(task_id)
+        self.assertEqual(self.client.get('/api/image-tasks/', headers=self.headers).get_json()['tasks'], [])
+        self.submit(task_id)
+        response = self.client.get('/api/image-tasks/', headers=self.headers)
+        row = response.get_json()['tasks'][0]
+        self.assertIn('no-store', response.headers['Cache-Control'])
+        self.assertEqual(row['thumbnail']['id'], source_id)
+        self.assertEqual(row['thumbnail_kind'], 'input')
+        with patch('app.image_tools.provider.generate', return_value=self.png()):
+            run_one()
+        row = self.client.get('/api/image-tasks/', headers=self.headers).get_json()['tasks'][0]
+        self.assertEqual(row['thumbnail_kind'], 'output')
+        self.assertNotEqual(row['thumbnail']['id'], source_id)
+        self.assertEqual(self.client.get('/api' + row['thumbnail']['url']).status_code, 302)
+        self.assertEqual(self.client.get('/api/image-tasks/', headers=self.admin_headers).get_json()['tasks'], [])
+        free_id = self.create('create')
+        free = ImageTask.query.get(free_id)
+        free.status = 'failed'
+        db.session.commit()
+        rows = self.client.get('/api/image-tasks/', headers=self.headers).get_json()['tasks']
+        self.assertIsNone(next(r for r in rows if r['id'] == free_id)['thumbnail'])
+        self.client.delete('/api/image-tasks/{}/'.format(task_id), headers=self.headers)
+        rows = self.client.get('/api/image-tasks/', headers=self.headers).get_json()['tasks']
+        self.assertNotIn(task_id, [r['id'] for r in rows])
+
     def test_advanced_options_preserve_one_output_per_source(self):
         task_id = self.create('cartoon')
         response = self.client.patch('/api/image-tasks/{}/'.format(task_id), headers=self.headers,

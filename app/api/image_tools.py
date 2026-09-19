@@ -200,8 +200,20 @@ def image_tool_admin():
 def image_tasks():
     if request.method == 'GET':
         tasks = ImageTask.query.filter_by(owner_id=g.current_user.id, deleted_at=None).filter(ImageTask.status != 'draft').order_by(ImageTask.created_at.desc()).limit(100).all()
-        return jsonify(tasks=[dict(id=t.id, name=json.loads(t.snapshot_json)['name'], status=t.status, tool_slug=t.tool_slug,
+        # One batch lookup, with successful outputs preferred over source photos.
+        previews = {}
+        if tasks:
+            assets = ImageToolAsset.query.filter(ImageToolAsset.task_id.in_([t.id for t in tasks])).order_by(
+                ImageToolAsset.created_at.desc(), ImageToolAsset.position, ImageToolAsset.id).all()
+            for asset in assets:
+                previous = previews.get(asset.task_id)
+                if previous is None or (previous.kind != 'output' and asset.kind == 'output'):
+                    previews[asset.task_id] = asset
+        response = jsonify(tasks=[dict(id=t.id, name=json.loads(t.snapshot_json)['name'], status=t.status, tool_slug=t.tool_slug,
+                                   thumbnail=asset_json(previews[t.id]) if t.id in previews else None,
+                                   thumbnail_kind=previews[t.id].kind if t.id in previews else None,
                                    created_at=t.created_at.isoformat() + 'Z') for t in tasks])
+        return response
     if getattr(g.current_user, 'is_guest', False):
         limited = consume_limits(client_address(), [('image-guest-task-create', 30, 3600)])
         if limited is not None:
