@@ -419,6 +419,8 @@ class Comment(db.Model):
   body = db.Column(db.Text)
   post_id = db.Column(db.Integer, db.ForeignKey('posts.id'))
   digest_id = db.Column(db.Integer, db.ForeignKey('ai_digests.id'), nullable=True, index=True)
+  moment_id = db.Column(db.String(36), db.ForeignKey('life_moments.id'), nullable=True, index=True)
+  moment = db.relationship('LifeMoment', backref=db.backref('comments', cascade='all, delete-orphan'))
   author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
   comments = db.relationship('Comment', backref = db.backref('response', remote_side=[id]), lazy = 'dynamic')
   response_id = db.Column(db.Integer, db.ForeignKey('comments.id'))
@@ -427,7 +429,7 @@ class Comment(db.Model):
 
   def to_json(self):
     from .digest_models import AiDigest
-    target = AiDigest.query.get(self.digest_id) if self.digest_id else self.post
+    target = self.moment if self.moment_id else AiDigest.query.get(self.digest_id) if self.digest_id else self.post
     return {
       'id': self.id,
       'body': self.body,
@@ -437,8 +439,9 @@ class Comment(db.Model):
       'hide': self.hide,
       'post_id': self.post_id,
       'digest_id': self.digest_id,
-      'post_title': target.title if target else '',
-      'target_url': '/ai-news/{}'.format(self.digest_id) if self.digest_id else '/article/{}'.format(self.post_id)
+      'moment_id': self.moment_id,
+      'post_title': (target.text[:80] if self.moment_id else target.title) if target else '',
+      'target_url': '/moments/{}'.format(self.moment_id) if self.moment_id else '/ai-news/{}'.format(self.digest_id) if self.digest_id else '/article/{}'.format(self.post_id)
     }
 
   @staticmethod

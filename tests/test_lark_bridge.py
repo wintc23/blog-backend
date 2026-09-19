@@ -11,7 +11,7 @@ os.environ.setdefault('FLASK_POSTS_PER_PAGE', '10')
 os.environ.setdefault('FLASK_BBS_PER_PAGE', '10')
 
 from app import create_app, db
-from app.models import LifeMoment, PersonalProfile, Role, User, Permission
+from app.models import LifeMoment, PersonalProfile, Role, User, Permission, Comment
 from lark_bridge.store import Store
 from lark_bridge.service import Bridge, accept, image_keys
 from lark_bridge.site import Site, redact
@@ -37,7 +37,7 @@ class BridgeTests(unittest.TestCase):
         self.app.config.update(SQLALCHEMY_DATABASE_URI='sqlite://', SECRET_KEY='test-only-secret', TESTING=True)
         self.context = self.app.app_context()
         self.context.push()
-        for table in (Role.__table__, User.__table__, LifeMoment.__table__, PersonalProfile.__table__):
+        for table in (Role.__table__, User.__table__, LifeMoment.__table__, PersonalProfile.__table__, Comment.__table__):
             table.create(db.engine)
         # Optional tables introduced by the independently developed media module.
         try:

@@ -234,7 +234,7 @@ def get_user_detail(user_id):
     messages = user.messages.filter_by(hide = False)
   from .comments import target_comments
   comments = [c.to_json() for c in comments.all()
-              if own_or_admin or target_comments(c.post_id, c.digest_id)[0] is not None]
+              if own_or_admin or target_comments(c.post_id, c.digest_id, c.moment_id)[0] is not None]
   messages = list(map(lambda m: m.to_json(), messages.all()))
   likes = list(map(lambda l: l.to_json(), user.likes.all()))
   info['comments'] = comments

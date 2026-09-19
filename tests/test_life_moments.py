@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, inspect, text
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app import create_app, db
-from app.models import LifeMoment, PersonalProfile, Role, User
+from app.models import LifeMoment, PersonalProfile, Role, User, Comment
 
 
 class LifeMomentTests(unittest.TestCase):
@@ -37,6 +37,7 @@ class LifeMomentTests(unittest.TestCase):
     PersonalProfile.__table__.create(db.engine)
     Role.__table__.create(db.engine)
     User.__table__.create(db.engine)
+    Comment.__table__.create(db.engine)
     self.client = self.app.test_client()
     self.headers = {'X-Test-Role': 'admin'}
     self.data = {'date': '2026-09-16', 'category': 'hiking', 'text': '山路上的风景 🌲',

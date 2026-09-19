@@ -1,7 +1,7 @@
 from flask import request, current_app, jsonify, g
 from .. import db
 from . import api
-from ..models import Post, Comment, Permission, User, Role
+from ..models import Post, Comment, Permission, User, Role, LifeMoment
 from .errors import *
 from .decorators import login_required, permission_required
 from sqlalchemy import or_
@@ -11,10 +11,12 @@ from ..socket import notify
 from ..rich_content import validate_body
 
 
-def target_comments(post_id=None, digest_id=None):
+def target_comments(post_id=None, digest_id=None, moment_id=None):
   admin = g.current_user and g.current_user.can(Permission.ADMIN)
-  if bool(post_id) == bool(digest_id):
+  if sum(bool(value) for value in (post_id, digest_id, moment_id)) != 1:
     return None, None
+  if moment_id:
+    return LifeMoment.query.get(moment_id), Comment.query.filter_by(moment_id=moment_id)
   if digest_id:
     from .ai_digest import _public_query
     from ..digest_models import AiDigest
@@ -39,7 +41,8 @@ def public_comments():
     digest_id = int(request.args['digest_id']) if request.args.get('digest_id') else None
   except (TypeError, ValueError):
     return bad_request('评论对象不正确', True)
-  target, query = target_comments(post_id, digest_id)
+  moment_id = request.args.get("moment_id")
+  target, query = target_comments(post_id, digest_id, moment_id)
   if target is None:
     return not_found('查询不到该内容', True)
   rows = visible_comments(query)
@@ -61,19 +64,23 @@ def add_comment():
   post_id, digest_id = data.get('post_id'), data.get('digest_id')
   if any(value is not None and (type(value) is not int or value < 1) for value in (post_id, digest_id)):
     return bad_request('评论对象不正确', True)
-  post, query = target_comments(post_id, digest_id)
+  moment_id = data.get('moment_id')
+  if moment_id is not None and (not isinstance(moment_id, str) or len(moment_id) != 36):
+    return bad_request('评论对象不正确', True)
+  post, query = target_comments(post_id, digest_id, moment_id)
   if post is None:
     return not_found('查询不到该内容', True)
   params['body'] = body
   params['post_id'] = post_id
   params['digest_id'] = digest_id
+  params['moment_id'] = moment_id
   params['author'] = g.current_user
   response_id = data.get('response_id')
   if response_id and (type(response_id) is not int or response_id < 1):
     return bad_request('回复对象不正确', True)
   if response_id:
     response = Comment.query.get(response_id)
-    if (not response or response.post_id != post_id or response.digest_id != digest_id or
+    if (not response or response.post_id != post_id or response.digest_id != digest_id or response.moment_id != moment_id or
         (response.hide and response.author_id != g.current_user.id and not g.current_user.can(Permission.ADMIN))):
       return not_found('查询不到该评论', True)
     if response:
@@ -89,20 +96,20 @@ def add_comment():
   db.session.add(comment)
   db.session.flush()
   from ..interaction_notifications import enqueue
-  enqueue('comment:' + str(comment.id), g.current_user, '收到评论回复' if response_id else '收到评论', body, '/{}/{}?commentId={}'.format('ai-news' if digest_id else 'article', digest_id or post_id, comment.id))
+  enqueue('comment:' + str(comment.id), g.current_user, '收到评论回复' if response_id else '收到评论', body, '/{}/{}?commentId={}'.format('moments' if moment_id else 'ai-news' if digest_id else 'article', moment_id or digest_id or post_id, comment.id))
   db.session.commit()
   from .stat import record_business_event
   record_business_event('comment.replied' if response_id else 'comment.created', {
     'comment_id': comment.id,
-    'post_id': post_id, 'digest_id': digest_id,
+    'post_id': post_id, 'digest_id': digest_id, 'moment_id': moment_id,
   })
   comments = visible_comments(query)
   domain = current_app.config["DOMAIN"]
-  url = '{}/{}/{}?commentId={}#comments'.format(domain, 'ai-news' if digest_id else 'article', digest_id or post_id, comment.id)
+  url = '{}/{}/{}?commentId={}#comments'.format(domain, 'moments' if moment_id else 'ai-news' if digest_id else 'article', moment_id or digest_id or post_id, comment.id)
   # 给管理员推送消息、邮件
   notify_data = {
     'url': url,
-    'post_title': post.title,
+    'post_title': post.text[:80] if moment_id else post.title,
     'content': body,
     'username': g.current_user.username
   }
@@ -133,7 +140,7 @@ def edit_comment(comment_id):
   comment = Comment.query.get(comment_id)
   if not comment or (comment.author_id != g.current_user.id and not g.current_user.can(Permission.ADMIN)):
     return not_found('查询不到该评论', True)
-  target, _ = target_comments(comment.post_id, comment.digest_id)
+  target, _ = target_comments(comment.post_id, comment.digest_id, comment.moment_id)
   if target is None:
     return not_found('查询不到该内容', True)
   try:

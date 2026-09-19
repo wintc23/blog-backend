@@ -15,7 +15,7 @@ class ReviewTests(unittest.TestCase):
     def setUp(self):
         fixtures.BridgeTests.setUp(self)
         for table in (Comment.__table__, Message.__table__, StatEvent.__table__):
-            table.create(db.engine)
+            table.create(db.engine, checkfirst=True)
         db.session.add(Comment(id=1, body='<p>请审核这条评论</p>', author_id=1, hide=True))
         db.session.add(Message(id=1, body='<p>请审核这条留言</p>', author_id=1, hide=True))
         db.session.commit()

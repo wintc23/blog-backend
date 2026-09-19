@@ -36,6 +36,7 @@ def snapshot(kind, row):
     return {'kind': kind, 'id': row.id, 'body': row.body or '', 'author_id': row.author_id,
             'response_id': row.response_id, 'timestamp': row.timestamp.isoformat() if row.timestamp else '',
             'post_id': getattr(row, 'post_id', None), 'digest_id': getattr(row, 'digest_id', None),
+            'moment_id': getattr(row, 'moment_id', None),
             'root_response_id': getattr(row, 'root_response_id', None)}
 
 
