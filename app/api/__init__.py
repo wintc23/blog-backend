@@ -3,7 +3,7 @@ from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 
 api = Blueprint('api', __name__)
 
-from . import comments, posts, users, decorators, errors, files, messages, topic, tag, link, sitemap, stat, ai_chat, products, personal_profile, ai_digest, generation, life_moments, email_login, media, image_tools, device_login, albums
+from . import comments, posts, users, decorators, errors, files, messages, topic, tag, link, sitemap, stat, ai_chat, products, personal_profile, ai_digest, generation, life_moments, email_login, media, image_tools, device_login, albums, content_likes
 from ..models import User, AiAccessKey
 from .. import db
 
