@@ -6,7 +6,7 @@ from uuid import uuid4
 from flask import g, jsonify, redirect, request, current_app
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from . import api
-from .decorators import login_required
+from .decorators import permission_required
 from .image_tools import ToolError, endpoint, asset_json
 from .. import db
 from ..album_models import Album, AlbumPhoto, AlbumItem
@@ -14,7 +14,7 @@ from ..image_tool_models import ImageToolAsset, ImageTask
 from ..image_tools import storage, cloud
 from ..media_models import MediaAsset
 from ..media import MAX_IMAGE_BYTES, prepare_image
-from ..models import LifeMoment, User, StatEvent
+from ..models import LifeMoment, User, StatEvent, Permission
 from ..guest import consume_limits
 
 
@@ -47,13 +47,13 @@ def owned(album_id, lock=False):
 
 def readable(album_id):
     album = Album.query.get(album_id)
-    if not album or album.visibility != 'public' and (not g.current_user or album.owner_id != g.current_user.id):
+    if not album or album.visibility != 'public' and (not g.current_user or not g.current_user.can(Permission.ADMIN) or album.owner_id != g.current_user.id):
         raise ToolError('画册不存在或未公开', 404)
     return album
 
 
 def photo_json(photo, album=None):
-    owner = bool(g.current_user and g.current_user.id == photo.owner_id)
+    owner = bool(g.current_user and g.current_user.can(Permission.ADMIN) and g.current_user.id == photo.owner_id)
     ticket = signer().dumps({'photo': photo.id, 'album': album.id if album else None,
         'version': album.version if album else None, 'owner': owner})
     return dict(id=photo.id, name=photo.name, width=photo.width, height=photo.height, source_kind=photo.source_kind,
@@ -65,7 +65,7 @@ def album_json(album, detail=False):
     cover_id = album.cover_id if any(i.photo_id == album.cover_id for i in items) else items[0].photo_id if items else None
     cover = AlbumPhoto.query.get(cover_id) if cover_id else None
     result = dict(id=album.id, title=album.title, description=album.description, visibility=album.visibility, version=album.version,
-        count=len(items), editable=bool(g.current_user and g.current_user.id == album.owner_id), cover=photo_json(cover, album) if cover else None,
+        count=len(items), editable=bool(g.current_user and g.current_user.can(Permission.ADMIN) and g.current_user.id == album.owner_id), cover=photo_json(cover, album) if cover else None,
         updated_at=album.updated_at.isoformat() + 'Z')
     if detail:
         result['photos'] = [photo_json(photo, album) for item in items for photo in [AlbumPhoto.query.get(item.photo_id)] if photo]
@@ -97,6 +97,7 @@ def list_albums():
     if scope not in ('mine', 'public'): raise ToolError('画册范围不正确')
     if scope == 'mine':
         if not g.current_user: raise ToolError('请先登录', 401)
+        if not g.current_user.can(Permission.ADMIN): raise ToolError('仅管理员可管理画册', 403)
         query = Album.query.filter_by(owner_id=g.current_user.id)
     else: query = Album.query.filter_by(visibility='public')
     total = query.count()
@@ -104,7 +105,7 @@ def list_albums():
 
 
 @api.route('/albums/', methods=['POST'])
-@login_required
+@permission_required(Permission.ADMIN)
 @endpoint
 def create_album():
     User.query.filter_by(id=g.current_user.id).with_for_update().first()
@@ -124,7 +125,7 @@ def get_album(album_id):
 
 
 @api.route('/albums/<album_id>/', methods=['PATCH', 'DELETE'])
-@login_required
+@permission_required(Permission.ADMIN)
 @endpoint
 def edit_album(album_id):
     album = owned(album_id, True)
@@ -184,7 +185,7 @@ def import_photo(source):
 
 
 @api.route('/albums/<album_id>/photos/', methods=['POST'])
-@login_required
+@permission_required(Permission.ADMIN)
 @endpoint
 def add_album_photos(album_id):
     User.query.filter_by(id=g.current_user.id).with_for_update().first()
@@ -206,7 +207,7 @@ def add_album_photos(album_id):
 
 
 @api.route('/albums/<album_id>/photos/<photo_id>/', methods=['DELETE'])
-@login_required
+@permission_required(Permission.ADMIN)
 @endpoint
 def remove_album_photo(album_id, photo_id):
     album = owned(album_id, True)
@@ -236,7 +237,7 @@ def album_photo_image(photo_id):
 
 
 @api.route('/album-sources/')
-@login_required
+@permission_required(Permission.ADMIN)
 @endpoint
 def album_sources():
     page, size = paging(); source = request.args.get('source', 'photo')
@@ -262,7 +263,7 @@ def album_sources():
 
 
 @api.route('/album-uploads/', methods=['POST'])
-@login_required
+@permission_required(Permission.ADMIN)
 @endpoint
 def album_upload():
     data = body()

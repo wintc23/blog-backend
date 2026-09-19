@@ -8,7 +8,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 import test_image_tools as fixture
 from app import db
-from app.models import LifeMoment
+from app.models import LifeMoment, User
 from app.album_models import Album, AlbumPhoto, AlbumItem, DeviceLogin
 from app.image_tool_models import ImageTask, ImageToolAsset
 from app.image_tools import storage
@@ -25,6 +25,11 @@ class AlbumsTests(unittest.TestCase):
 
     def setUp(self):
         fixture.ImageToolsTests.setUp(self)
+        # Keep two independent administrators to exercise owner isolation.
+        self.regular.role = self.owner.role
+        visitor = User(id_string='qq-album-viewer', username='viewer')
+        db.session.add(visitor); db.session.commit()
+        self.viewer_headers = {'Authorization': visitor.generate_auth_token(3600)}
         for model in (Album, AlbumItem, DeviceLogin, LifeMoment): model.__table__.create(db.engine)
 
     def tearDown(self):
@@ -71,6 +76,31 @@ class AlbumsTests(unittest.TestCase):
         sources = self.client.get('/api/album-sources/', headers=self.headers)
         self.assertEqual(sources.status_code, 200, sources.get_json())
         self.assertEqual(sources.get_json()['list'][0]['source'], source)
+
+    def test_only_admin_can_manage_albums_and_collect_photos(self):
+        album = self.album('public'); path = '/api/albums/{}/'.format(album['id'])
+        for headers, status in ((self.viewer_headers, 403), ({}, 401)):
+            for method, endpoint, data in (
+                ('post', '/api/albums/', {'title': '拒绝创建'}),
+                ('patch', path, {'version': album['version'], 'title': '拒绝编辑'}),
+                ('delete', path, None),
+                ('post', path + 'photos/', {'sources': [{'type': 'photo', 'id': 'other'}]}),
+                ('delete', path + 'photos/other/', None),
+                ('post', '/api/album-uploads/', {'action': 'authorize', 'size': 100, 'mime': 'image/png'}),
+                ('post', '/api/album-uploads/', {'action': 'complete', 'ticket': 'invalid'}),
+                ('get', '/api/album-sources/', None),
+                ('get', '/api/albums/?scope=mine', None),
+            ):
+                response = getattr(self.client, method)(endpoint, headers=headers, **({'json': data} if data else {}))
+                self.assertEqual(response.status_code, status, (method, endpoint, response.get_json()))
+            self.assertEqual(self.client.get('/api/albums/', headers=headers).status_code, 200)
+            view = self.client.get(path, headers=headers).get_json()
+            self.assertFalse(view['editable'])
+        # An account that loses its administrator role cannot edit its former album.
+        author = User.query.get(self.regular_id); author.role = User.verify_auth_token(self.viewer_headers['Authorization']).role
+        db.session.commit()
+        self.assertEqual(self.client.patch(path, headers=self.headers, json={'version': album['version']}).status_code, 403)
+        self.assertFalse(self.client.get(path, headers=self.headers).get_json()['editable'])
 
     def test_generated_picture_survives_task_cleanup(self):
         task_id = self.create(); asset_id = self.upload(task_id)
