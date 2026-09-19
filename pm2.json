@@ -1,14 +1,29 @@
 {
-  "apps": [{
-    "name": "blog-server",
-    "script": "/home/lushg/blog-backend/venv/bin/gunicorn --worker-class eventlet -w 1 --timeout 180 -b 127.0.0.1:5000 main:app",
-    "instances": 1,
-    "log_date_format":"YYYY-MM-DD HH:mm Z",
-    "env": {
-      "PATH": "/home/lushg/blog-backend/venv/bin:/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin",
-      "CODEX_COMMAND": "/root/.nvm/versions/node/v22.22.2/bin/codex",
-      "CODEX_TIMEOUT": "170",
-      "CONTENT_IMAGE_CODEX_HOME": "/root/.codex-content-images"
+  "apps": [
+    {
+      "name": "blog-server",
+      "script": "/home/lushg/blog-backend/venv/bin/gunicorn",
+      "instances": 1,
+      "log_date_format": "YYYY-MM-DD HH:mm Z",
+      "env": {
+        "PATH": "/home/lushg/blog-backend/venv/bin:/root/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin",
+        "CODEX_COMMAND": "/root/.nvm/versions/node/v22.22.2/bin/codex",
+        "CODEX_TIMEOUT": "170",
+        "CONTENT_IMAGE_CODEX_HOME": "/root/.codex-content-images"
+      },
+      "interpreter": "/home/lushg/blog-backend/venv/bin/python",
+      "cwd": "/home/lushg/blog-backend",
+      "args": [
+        "--worker-class",
+        "eventlet",
+        "-w",
+        "1",
+        "--timeout",
+        "180",
+        "-b",
+        "127.0.0.1:5000",
+        "main:app"
+      ]
     }
-  }]
+  ]
 }
