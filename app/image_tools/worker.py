@@ -132,6 +132,7 @@ def run_one():
 
 def cleanup():
     """Delete tombstoned jobs and abandoned drafts; completed jobs require explicit deletion."""
+    from ..album_models import AlbumPhoto
     cutoff = datetime.utcnow() - timedelta(days=7)
     tasks = ImageTask.query.filter(db.or_(ImageTask.deleted_at.isnot(None), db.and_(ImageTask.status == 'draft', ImageTask.updated_at < cutoff))).limit(100).all()
     for candidate in tasks:
@@ -147,13 +148,15 @@ def cleanup():
                 ImageToolItem.started_at > quota_cutoff)).count():
             continue
         for asset in ImageToolAsset.query.filter_by(task_id=task.id).all():
-            storage.discard(asset)
+            if not AlbumPhoto.query.filter_by(cloud_key=storage.key(asset)).first():
+                storage.discard(asset)
             db.session.delete(asset)
         ImageToolItem.query.filter_by(task_id=task.id).delete()
         db.session.delete(task)
     db.session.commit()
     # Orphaned uploads (including unused direct-upload tickets) expire after a day.
     known = {a.id for a in ImageToolAsset.query.all()}
+    known.update(photo.cloud_key[len(storage.cloud.PREFIX):].split('.')[0] for photo in AlbumPhoto.query.filter(AlbumPhoto.cloud_key.isnot(None)) if photo.cloud_key.startswith(storage.cloud.PREFIX))
     cutoff = (time.time() - 86400) * 10000000
     for obj in storage.cloud.objects():
         name = obj['key'][len(storage.cloud.PREFIX):]

@@ -35,6 +35,8 @@ class ImageToolsTests(unittest.TestCase):
             mock.start(); self.patches.append(mock)
         for model in (ImageTool, ImageTask, ImageToolAsset, ImageToolItem, ImageToolSettings):
             model.__table__.create(db.engine)
+        from app.album_models import AlbumPhoto
+        AlbumPhoto.__table__.create(db.engine)
         seed()
         self.headers = {'Authorization': self.regular.generate_auth_token(3600)}
         self.admin_headers = {'Authorization': self.owner.generate_auth_token(3600)}

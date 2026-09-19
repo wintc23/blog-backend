@@ -21,6 +21,7 @@ KEY_PATTERN = re.compile(r'^(?:managed-images/[a-f0-9]{32}\.(?:jpg|png|webp)|[a-
 URL_PATTERN = re.compile(r'https?://[^\s<>"\'\[\]()]+')
 TRACKED_FIELDS = {
     'users': ('avatar',),
+    'album_photos': ('url',),
     'posts': ('body_html', 'abstract_image', 'abstract'),
     'comments': ('body',), 'messages': ('body',),
     'life_moments': ('image_url', 'images_json'),
@@ -91,7 +92,13 @@ def prepare_image(data):
                 extension, mime = ('png', 'image/png') if mode == 'RGBA' else ('jpg', 'image/jpeg')
                 clean.save(output, format='PNG' if mode == 'RGBA' else 'JPEG', **({} if mode == 'RGBA' else {'quality': 90}))
                 if output.tell() > MAX_IMAGE_BYTES:
-                    raise ValueError('处理后的图片超过 5 MB，请缩小尺寸后重试')
+                    # Metadata stripping can expand a compact JPEG or transparent WebP.
+                    # Preserve alpha and optimize the cleaned copy instead of rejecting it.
+                    extension, mime = 'webp', 'image/webp'
+                    output = io.BytesIO(); clean.save(output, 'WEBP', quality=90)
+                    while output.tell() > MAX_IMAGE_BYTES and max(clean.size) > 1:
+                        clean = clean.resize((max(1, int(clean.width * .8)), max(1, int(clean.height * .8))), Image.Resampling.LANCZOS)
+                        output = io.BytesIO(); clean.save(output, 'WEBP', quality=90)
                 return output.getvalue(), extension, mime, clean.width, clean.height
     except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError, Image.DecompressionBombWarning):
         raise ValueError('图片无效，请上传完整的静态 JPG、PNG 或 WebP 图片')
